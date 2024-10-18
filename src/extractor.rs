@@ -1,14 +1,13 @@
 use anyhow::Context;
 
+use frankenstein::SetWebhookParams;
 use serde::de::DeserializeOwned;
-use serde_json;
 use worker::async_trait::async_trait;
 use worker::*;
-use frankenstein::SetWebhookParams;
 
 #[async_trait(?Send)]
 pub trait ExtractFromRequest {
-     async fn extract_from_request(req: &mut Request) -> anyhow::Result<Self>
+    async fn extract_from_request(req: &mut Request) -> anyhow::Result<Self>
     where
         Self: Sized + DeserializeOwned;
 }
@@ -18,7 +17,7 @@ impl<T> ExtractFromRequest for T
 where
     T: DeserializeOwned,
 {
-     async fn extract_from_request(req: &mut Request) -> anyhow::Result<Self> {
+    async fn extract_from_request(req: &mut Request) -> anyhow::Result<Self> {
         req.json().await.context("failed to parse request body")
     }
 }
@@ -39,18 +38,15 @@ impl ExtractFromEnv for SetWebhookParams {
         let max_connections = env
             .var("MAX_CONNECTIONS")
             .ok()
-            .map(|s| s.to_string().parse::<u32>().ok())
-            .flatten();
+            .and_then(|s| s.to_string().parse::<u32>().ok());
         let allowed_updates = env
             .var("ALLOWED_UPDATES")
             .ok()
-            .map(|s| serde_json::from_str(&s.to_string()).ok())
-            .flatten(); // Assuming JSON format
+            .and_then(|s| serde_json::from_str(&s.to_string()).ok()); // Assuming JSON format
         let drop_pending_updates = env
             .var("DROP_PENDING_UPDATES")
             .ok()
-            .map(|s| s.to_string().parse::<bool>().ok())
-            .flatten();
+            .and_then(|s| s.to_string().parse::<bool>().ok());
         let secret_token = env.var("SECRET_TOKEN").ok().map(|s| s.to_string()); // Convert Secret to String
 
         Ok(SetWebhookParams {
