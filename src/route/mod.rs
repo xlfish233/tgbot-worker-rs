@@ -1,4 +1,5 @@
-use crate::controller::set_webhook;
+use crate::*;
+use controller::settings::set_webhook;
 use worker::*;
 
 pub async fn route(_req: Request, _env: Env, _ctx: Context) -> Result<Response> {
