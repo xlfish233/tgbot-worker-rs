@@ -46,10 +46,10 @@ This project provides a basic Telegram bot framework built on Cloudflare Workers
 
 ### Setup Instructions
 
-Before using this project, you need to set the `BOT_SECRET_TOKEN` Wrangler secret:
+Before using this project, you need to set the `BOT_TOKEN` Wrangler secret:
 
 ```bash
-wrangler secret put BOT_SECRET_TOKEN 
+wrangler secret put BOT_TOKEN 
 ```
 
 Follow the prompts to securely store your bot's secret token.

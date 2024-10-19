@@ -1,6 +1,5 @@
-
-use std::borrow::Cow;
 use serde::Serialize;
+use std::borrow::Cow;
 
 #[derive(Serialize)]
 pub struct WrappedResponse<'a> {

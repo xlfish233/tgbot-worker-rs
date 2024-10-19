@@ -4,7 +4,6 @@ use crate::service::TelegramService;
 use crate::*;
 use frankenstein::SetWebhookParams;
 
-
 pub async fn set_webhook(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     match SetWebhookParams::extract_from_request(&mut req).await {
         Ok(param) => {
@@ -13,17 +12,18 @@ pub async fn set_webhook(mut req: Request, ctx: RouteContext<()>) -> Result<Resp
                 Ok(resp) => Ok(Response::from_json(&resp)?),
                 Err(e) => {
                     console_error!("Error with backtrace: {:#?}", e);
-                    Ok(Response::from_json(&e.to_string())?)
-                },
+                    Response::ok(wrapped_response(
+                        500,
+                        "Error with backtrace",
+                        Some(&format!("{:#?}", e)),
+                    ))
+                }
             }
         }
-        Err(e) => {
-            Response::ok(wrapped_response(500, "Error with backtrace", Some(&format!("{:#?}", e))))
-        }
+        Err(e) => Response::ok(wrapped_response(
+            500,
+            "Error with backtrace",
+            Some(&format!("{:#?}", e)),
+        )),
     }
 }
-
-
-
-
-
