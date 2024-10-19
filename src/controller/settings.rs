@@ -43,10 +43,10 @@ pub async fn set_webhook(mut req: Request, ctx: RouteContext<()>) -> Result<Resp
     handle_request!(req, ctx, SetWebhookParams, TelegramService::set_webhook, params) 
 }
 
-pub async fn get_webhook_info(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn get_webhook_info(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     handle_request!(req, ctx, TelegramService::get_webhook_info) 
 }
 
-pub async fn delete_webhook(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn delete_webhook(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     handle_request!(req, ctx, DeleteWebhookParams, TelegramService::delete_webhook, DeleteWebhookParams::builder().drop_pending_updates(true).build()) 
 }
