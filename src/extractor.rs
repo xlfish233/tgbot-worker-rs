@@ -5,7 +5,7 @@ use worker::*;
 
 #[async_trait(?Send)]
 pub trait ExtractFromRequest {
-    async fn extract_from_request(req: &mut Request) -> anyhow::Result<Self>
+    async fn extract_from_request(req: &mut Request) -> AnyhowResult<Self>
     where
         Self: Sized + DeserializeOwned;
 }
@@ -15,7 +15,7 @@ impl<T> ExtractFromRequest for T
 where
     T: DeserializeOwned,
 {
-    async fn extract_from_request(req: &mut Request) -> anyhow::Result<Self> {
+    async fn extract_from_request(req: &mut Request) -> AnyhowResult<Self> {
         req.json().await.context("failed to parse request body")
     }
 }

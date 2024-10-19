@@ -21,3 +21,8 @@ async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
     console_error_panic_hook::set_once();
     route::route(req, env, ctx).await
 }
+
+#[event(scheduled)]
+async fn scheduled(event: ScheduledEvent, _env: Env,_ctx:ScheduleContext)  {
+    console_log!("Scheduled event: {:?}", event);
+}
