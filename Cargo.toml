@@ -17,7 +17,9 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = "1.0.90"
 console_error_panic_hook = { version = "0.1.7" }
+convert_case = "0.6.0"
 frankenstein = { git = "https://github.com/xlfish233/frankenstein", branch = "wasm-sup", features = ["async-http-client-wasm"], default-features = false }
+paste = "1.0.15"
 serde = "1.0.210"
 serde_json = "1.0.131"  # Added serde_json dependency
 worker = { version = "0.4.2" }
