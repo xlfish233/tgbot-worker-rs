@@ -17,11 +17,6 @@ pub async fn telegram_get_api(req: Request, ctx: RouteContext<()>) -> Result<Res
         .run(req, ctx.env)
         .await
 }
-use convert_case::{};
-
-
-
-
 
 pub async fn root(_req: Request, _: RouteContext<()>) -> Result<Response> {
     Response::ok("Bot is running!")

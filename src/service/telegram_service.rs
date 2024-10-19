@@ -1,4 +1,6 @@
-use frankenstein::{AsyncTelegramApi, MethodResponse, SetWebhookParams, WebhookInfo, DeleteWebhookParams}; // Added WebhookInfo import
+use frankenstein::{
+    AsyncTelegramApi, DeleteWebhookParams, MethodResponse, SetWebhookParams, WebhookInfo,
+}; // Added WebhookInfo import
 
 use worker::*;
 
@@ -13,7 +15,7 @@ macro_rules! define_telegram_method {
             api.$method(params).await.context("request fail")
         }
     };
-    
+
     ($name:ident, $method:ident) => {
         pub async fn $name(env: &Env) -> AnyhowResult<MethodResponse<WebhookInfo>> {
             let api = get_cli_from_env(env).context("Failed to get telegram api")?;
@@ -25,5 +27,5 @@ macro_rules! define_telegram_method {
 impl TelegramService {
     define_telegram_method!(set_webhook, set_webhook, SetWebhookParams);
     define_telegram_method!(delete_webhook, delete_webhook, DeleteWebhookParams);
-    define_telegram_method!(get_webhook_info, get_webhook_info); 
+    define_telegram_method!(get_webhook_info, get_webhook_info);
 }

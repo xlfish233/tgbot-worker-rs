@@ -1,9 +1,9 @@
-use crate::wrapped_response::wrapped_response; 
+use crate::wrapped_response::wrapped_response;
 
 use crate::service::TelegramService;
-use frankenstein::{SetWebhookParams, DeleteWebhookParams}; 
-use worker::{Response, Request, RouteContext,Result}; 
-use worker::console_error; 
+use frankenstein::{DeleteWebhookParams, SetWebhookParams};
+use worker::console_error;
+use worker::{Request, Response, Result, RouteContext};
 
 macro_rules! handle_request {
     ($req:ident, $ctx:ident, $param_type:path, $service_call:expr, $builder:expr) => {{
@@ -40,13 +40,27 @@ macro_rules! handle_request {
 
 pub async fn set_webhook(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let params: SetWebhookParams = req.json().await?;
-    handle_request!(req, ctx, SetWebhookParams, TelegramService::set_webhook, params) 
+    handle_request!(
+        req,
+        ctx,
+        SetWebhookParams,
+        TelegramService::set_webhook,
+        params
+    )
 }
 
 pub async fn get_webhook_info(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    handle_request!(req, ctx, TelegramService::get_webhook_info) 
+    handle_request!(req, ctx, TelegramService::get_webhook_info)
 }
 
 pub async fn delete_webhook(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    handle_request!(req, ctx, DeleteWebhookParams, TelegramService::delete_webhook, DeleteWebhookParams::builder().drop_pending_updates(true).build()) 
+    handle_request!(
+        req,
+        ctx,
+        DeleteWebhookParams,
+        TelegramService::delete_webhook,
+        DeleteWebhookParams::builder()
+            .drop_pending_updates(true)
+            .build()
+    )
 }
