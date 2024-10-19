@@ -1,9 +1,9 @@
-use frankenstein::{AsyncTelegramApi, SetWebhookParams};
+use frankenstein::{AsyncTelegramApi, MethodResponse, SetWebhookParams};
 
 use worker::*;
 
 use super::*;
-use crate::*;
+
 
 pub struct TelegramService {}
 
