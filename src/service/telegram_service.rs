@@ -1,6 +1,6 @@
 use frankenstein::{
     AsyncTelegramApi, DeleteWebhookParams, MethodResponse, SetWebhookParams, WebhookInfo,
-}; // Added WebhookInfo import
+};
 
 use worker::*;
 
@@ -12,14 +12,14 @@ macro_rules! define_telegram_method {
     ($name:ident, $method:ident, $params:ty) => {
         pub async fn $name(params: &$params, env: &Env) -> AnyhowResult<MethodResponse<bool>> {
             let api = get_cli_from_env(env).context("Failed to get telegram api")?;
-            Box::pin(api.$method(params)).await.context("request fail")
+            api.$method(params).await.context("request fail")
         }
     };
 
     ($name:ident, $method:ident) => {
         pub async fn $name(env: &Env) -> AnyhowResult<MethodResponse<WebhookInfo>> {
             let api = get_cli_from_env(env).context("Failed to get telegram api")?;
-            Box::pin(api.$method()).await.context("request fail")
+            api.$method().await.context("request fail")
         }
     };
 }
