@@ -1,32 +1,45 @@
 use crate::*;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
+use axum::Json;
 use controller::settings::*;
-use worker::*;
+use frankenstein::Message;
+use serde_json::json;
 
-pub async fn route(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    Router::new()
-        .get_async("/", root)
-        .post_async("/set_webhook", set_webhook)
-        .get_async("/telegramApi", telegram_get_api)
-        .post_async("/telegramApi", telegram_post_api)
-        .run(req, env)
-        .await
-}
-pub async fn telegram_get_api(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    Router::new()
-        .get_async("/getWebhookInfo", get_webhook_info)
-        .run(req, ctx.env)
-        .await
+pub async fn axum_router(env: Env) -> axum::Router {
+    axum::Router::new()
+        .route("/", get(root))
+        .route("/telegramMessage", post(telegram_message))
+        .nest("/telegramApi", telegram_api_router())
+        .with_state(env)
 }
 
-pub async fn root(_req: Request, _: RouteContext<()>) -> Result<Response> {
-    Response::ok("Bot is running!")
+pub fn telegram_api_router() -> axum::Router<Env> {
+    axum::Router::new()
+        .route("/getWebhookInfo", get(get_webhook_info))
+        .route("/setWebhook", post(set_webhook))
+        .route("/deleteWebhook", post(delete_webhook))
 }
 
-pub async fn telegram_post_api(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    Router::new()
-        .post_async("/setWebhook", set_webhook)
-        .post_async("/deleteWebhook", delete_webhook)
-        .post_async("/getWebhookInfo", get_webhook_info)
-        .run(req, ctx.env)
-        .await
+pub async fn telegram_message(
+    State(_env): State<Env>,
+    Json(message): Json<Message>,
+) -> impl axum::response::IntoResponse {
+    let chat_id = message.chat.id;
+    let text = message.text.unwrap_or_default();
+
+    // 构建 JSON 响应
+    let response_body = json!({
+        "status": "success",
+        "message": format!("Hello, {}", text),
+        "chat_id": chat_id
+    });
+
+    // 返回 JSON 响应
+    (StatusCode::OK, Json(response_body))
+}
+
+pub async fn root() -> &'static str {
+    "Bot is running!"
 }

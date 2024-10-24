@@ -1,66 +1,103 @@
-use crate::wrapped_response::wrapped_response;
-
 use crate::service::TelegramService;
+use axum::{
+    debug_handler,
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Json},
+};
 use frankenstein::{DeleteWebhookParams, SetWebhookParams};
-use worker::console_error;
-use worker::{Request, Response, Result, RouteContext};
+use serde_json::json;
+use worker::{console_error, console_log, Env};
 
-macro_rules! handle_request {
-    ($req:ident, $ctx:ident, $param_type:path, $service_call:expr, $builder:expr) => {{
-        let params = $builder; // Use the provided builder expression
-        let response = $service_call(&params, &$ctx.env).await;
-        match response {
-            Ok(resp) => Ok(Response::from_json(&resp)?), // Convert to Response
-            Err(e) => {
-                console_error!("Error with backtrace: {:#?}", e);
-                Response::ok(wrapped_response(
-                    500,
-                    "Error with backtrace",
-                    Some(&format!("{:#?}", e)),
-                )) // Return Response directly
-            }
+// 定义错误处理
+#[derive(Debug)]
+pub enum ApiError {
+    ServiceError(String),
+    JsonError(String),
+}
+
+// 实现 IntoResponse
+impl IntoResponse for ApiError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, error_message) = match self {
+            ApiError::ServiceError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            ApiError::JsonError(msg) => (StatusCode::BAD_REQUEST, msg),
+        };
+
+        let body = json!({
+            "status": "error",
+            "code": status.as_u16(),
+            "message": "Error occurred",
+            "data": error_message,
+        });
+
+        (status, Json(body)).into_response()
+    }
+}
+
+// 处理函数现在直接返回实现了 IntoResponse 的类型
+#[worker::send]
+pub async fn set_webhook(
+    State(env): State<Env>,
+    Json(params): Json<SetWebhookParams>,
+) -> impl IntoResponse {
+    match TelegramService::set_webhook(&params, &env).await {
+        Ok(resp) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "success",
+                "data": resp
+            })),
+        )
+            .into_response(),
+        Err(e) => {
+            console_error!("Error with backtrace: {:#?}", e);
+            ApiError::ServiceError(format!("{:#?}", e)).into_response()
         }
-    }};
-    // Overload for cases with no parameters
-    ($req:ident, $ctx:ident, $service_call:expr) => {{
-        let response = $service_call(&$ctx.env).await;
-        match response {
-            Ok(resp) => Ok(Response::from_json(&resp)?), // Convert to Response
-            Err(e) => {
-                console_error!("Error with backtrace: {:#?}", e);
-                Response::ok(wrapped_response(
-                    500,
-                    "Error with backtrace",
-                    Some(&format!("{:#?}", e)),
-                )) // Return Response directly
-            }
+    }
+}
+
+#[debug_handler]
+#[worker::send]
+pub async fn get_webhook_info(State(env): State<Env>) -> impl axum::response::IntoResponse {
+    match TelegramService::get_webhook_info(&env).await {
+        Ok(info) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "success",
+                "data": info
+            })),
+        ),
+        Err(e) => {
+            tracing::error!("Error retrieving webhook info: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "status": "error",
+                    "message": format!("{:?}", e)
+                })),
+            )
         }
-    }};
+    }
 }
+#[worker::send]
+pub async fn delete_webhook(State(env): State<Env>) -> impl IntoResponse {
+    let params = DeleteWebhookParams::builder()
+        .drop_pending_updates(true)
+        .build();
 
-pub async fn set_webhook(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let params: SetWebhookParams = req.json().await?;
-    handle_request!(
-        req,
-        ctx,
-        SetWebhookParams,
-        TelegramService::set_webhook,
-        params
-    )
-}
-
-pub async fn get_webhook_info(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    handle_request!(req, ctx, TelegramService::get_webhook_info)
-}
-
-pub async fn delete_webhook(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    handle_request!(
-        req,
-        ctx,
-        DeleteWebhookParams,
-        TelegramService::delete_webhook,
-        DeleteWebhookParams::builder()
-            .drop_pending_updates(true)
-            .build()
-    )
+    match TelegramService::delete_webhook(&params, &env).await {
+        Ok(resp) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "success",
+                "data": resp
+            })),
+        )
+            .into_response(),
+        Err(e) => {
+            console_error!("Error with backtrace: {:#?}", e);
+            ApiError::ServiceError(format!("{:#?}", e)).into_response()
+        }
+    }
 }
