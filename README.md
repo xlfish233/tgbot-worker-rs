@@ -15,6 +15,8 @@ This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 
 This project provides a basic Telegram bot framework built on Cloudflare Workers using Rust. It handles incoming updates from Telegram and allows you to define custom logic for responding to different commands and events.
 
+**Note:** The `telegramApi` is designed for users who have difficulty accessing Telegram directly for debugging purposes. It will directly retrieve the API from the secret, so users do not need to use the API themselves. It should not be used in production. Therefore, do not set `ENABLE_TELEGRAM_API` to `1` in production environments.
+
 
 ## Features
 
@@ -22,7 +24,7 @@ This project provides a basic Telegram bot framework built on Cloudflare Workers
 - **Rust Development:** Built with Rust for performance and safety.
 - **Telegram Bot API:** Interacts with the Telegram Bot API for receiving updates and sending responses.
 - **Webhook Support:** Supports webhook setup for seamless communication with Telegram.
-- **Extensible Architecture:** Designed to be easily extended with custom commands and functionalities.
+- **Extensible Architecture:** Designed to be easily extended with custom commands and functionalities. 
 
 
 ## Project Details
@@ -60,7 +62,7 @@ Follow the prompts to securely store your bot's secret token.
 Before using this bot, you must set a webhook using the official Telegram API to your Cloudflare Worker. You can do this in two ways:
 
 1. **Using the Telegram API:** Set the webhook to your Cloudflare Worker URL through the official Telegram API.
-2. **Using the Bot's Endpoint:** Call the `set_webhook` endpoint of this bot to configure the webhook.
+2. **Using the Bot's Endpoint:** Call the `/telegramApi/setWebhook` endpoint of this bot to configure the webhook.
 
 **Important:** Failure to set a webhook will prevent the bot from functioning correctly.
 

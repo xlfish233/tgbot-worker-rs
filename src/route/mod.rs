@@ -8,11 +8,16 @@ use frankenstein::Message;
 use serde_json::json;
 
 pub async fn axum_router(env: Env) -> axum::Router {
-    axum::Router::new()
+
+    let mut router = axum::Router::new()
         .route("/", get(root))
-        .route("/telegramMessage", post(telegram_message))
-        .nest("/telegramApi", telegram_api_router())
-        .with_state(env)
+        .route("/telegramMessage", post(telegram_message));
+    
+    if env.var("ENABLE_TELEGRAM_API").unwrap_or(Var::from("")).to_string() == "1" {
+        router = router.nest("/telegramApi", telegram_api_router());
+    }
+
+    router.with_state(env)
 }
 
 pub fn telegram_api_router() -> axum::Router<Env> {
