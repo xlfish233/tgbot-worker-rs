@@ -20,6 +20,8 @@ pub fn telegram_api_router() -> axum::Router<Env> {
         .route("/getWebhookInfo", get(get_webhook_info))
         .route("/setWebhook", post(set_webhook))
         .route("/deleteWebhook", post(delete_webhook))
+        //setMyCommands
+        .route("/setMyCommands", post(set_my_commands))
 }
 
 pub async fn telegram_message(
