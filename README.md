@@ -1,15 +1,28 @@
 # Telegram Bot Worker (Rust)
 
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![License](https://img.shields.io/badge/license-WTFPL-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-orange)
+
 This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 
 ## Table of Contents
 
-- [Description](#description)
-- [Features](#features)
-- [Project Details](#project-details)
-- [Get Started](#get-started)
-- [API Documentation](#api-documentation)
-- [Contributing](#contributing)
+- [Telegram Bot Worker (Rust)](#telegram-bot-worker-rust)
+  - [Table of Contents](#table-of-contents)
+  - [Description](#description)
+  - [Features](#features)
+  - [Usage Example](#usage-example)
+  - [Project Details](#project-details)
+  - [Get Started](#get-started)
+    - [Setup Instructions](#setup-instructions)
+    - [Webhook Setup](#webhook-setup)
+  - [API Documentation](#api-documentation)
+    - [Endpoints](#endpoints)
+  - [Contributing](#contributing)
+    - [Special Notes](#special-notes)
+    - [Code Review Process](#code-review-process)
+  - [License](#license)
 
 ## Description
 
@@ -35,6 +48,20 @@ production environments.
 - **Extensible Architecture:** Designed to be easily extended with custom
   commands and functionalities.
 
+## Usage Example
+
+Here is a simple example of how to use the bot:
+
+```rust
+// Example code to handle a command
+fn handle_command(command: &str) {
+    match command {
+        "/start" => println!("Bot started!"),
+        _ => println!("Unknown command!"),
+    }
+}
+```
+
 ## Project Details
 
 - **Project Name:** `tgbot-worker-rs`
@@ -48,9 +75,13 @@ production environments.
   Workers.
 - `console_error_panic_hook`: Captures and logs panic messages to the console.
 - `serde`: Enables serialization and deserialization of data structures.
-- `serde_json`: Provides JSON serialization and deserialization support.
+- `serde_json`: Provides JSON serialization and deserialization support. # Added serde_json dependency
 - `frankenstein`: A library for interacting with the Telegram Bot API.
 - `anyhow`: Provides a convenient way to handle errors.
+- `convert_case`: A utility for converting case styles.
+- `axum`: A web framework for building APIs with Rust.
+- `tower-service`: A service abstraction for building tower-based applications.
+- `tracing`: A framework for instrumenting Rust programs.
 
 ## Get Started
 
@@ -103,3 +134,16 @@ follow these steps:
 2. Create a new branch for your feature or bug fix.
 3. Make your changes and ensure they adhere to the project's coding style.
 4. Submit a pull request with a clear description of your changes.
+
+### Special Notes
+
+You can implement simple functionalities by adding logic in `src/plugin/command_handler.rs`. 
+If you need additional features or have specific requests, please contact the author or open an issue; the author will do their best to consider and fulfill them.
+
+### Code Review Process
+
+To ensure code quality, all contributions will be reviewed by the maintainers. Please be patient during this process.
+
+## License
+
+This project is licensed under the WTFPL License - see the [LICENSE](LICENSE) file for details.
