@@ -29,3 +29,6 @@ worker-macros = { version = "0.4.2" }
 wasm-bindgen-futures = "0.4"
 tracing = "0.1.40"
 axum-wasm-macros = "0.1.2"
+
+[build]
+target = "wasm32-unknown-unknown"

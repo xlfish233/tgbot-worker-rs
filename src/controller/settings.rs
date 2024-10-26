@@ -1,7 +1,7 @@
 use crate::controller::response_helpers::{error_response, success_response};
 use crate::service::TelegramService;
 use axum::{
-    debug_handler,
+
     extract::State,
     response::{IntoResponse, Json},
 };
@@ -34,7 +34,6 @@ macro_rules! define_telegram_function {
         }
     };
 }
-
 
 define_telegram_function!(set_webhook, set_webhook, SetWebhookParams);
 define_telegram_function!(get_webhook_info, get_webhook_info);

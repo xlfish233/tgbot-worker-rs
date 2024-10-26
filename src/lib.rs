@@ -1,12 +1,9 @@
 mod route;
 
-mod extractor;
-
 mod controller;
 mod service;
 mod wrapped_response;
 
-pub use self::extractor::*;
 pub use anyhow::anyhow;
 pub use anyhow::Context as AnyhowContext;
 pub use anyhow::Result as AnyhowResult;
