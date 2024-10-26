@@ -6,6 +6,7 @@ use crate::state::AppState;
 use serde_json::json;
 use worker::console_error;
 
+#[worker::send]
 pub async fn init(State(env): State<AppState>) -> impl IntoResponse {
     let commands = vec![
         BotCommand {

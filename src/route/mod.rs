@@ -4,10 +4,11 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::Json;
 use controller::settings::*;
-use frankenstein::{Message, SetMyCommandsParams}; // 导入 SetMyCommandsParams
+use controller::init::*;
+use frankenstein::Message; // 导入 SetMyCommandsParams
 use serde_json::json;
 use crate::state::AppState;
-use crate::service::TelegramService; // 导入 TelegramService
+ // 导入 TelegramService
 
 pub async fn axum_router(env: Env) -> axum::Router {
     let state = AppState::new(env);
@@ -52,24 +53,3 @@ pub async fn root() -> &'static str {
 }
 
 // 新增的处理函数
-#[worker::send]
-pub async fn init(State(state): State<AppState>) -> impl axum::response::IntoResponse { // 修改为使用 state
-    let commands = vec![
-        frankenstein::BotCommand {
-            command: "/version".to_string(),
-            description: "显示版本信息".to_string(),
-        },
-    ];
-
-    match TelegramService::set_my_commands(&SetMyCommandsParams { 
-        commands, 
-        scope: None, // 添加 scope 字段
-        language_code: None, // 添加 language_code 字段
-    }, &state).await { // 修改为使用 state
-        Ok(_) => (StatusCode::OK, Json(json!({"status": "success", "message": "Commands set successfully."}))),
-        Err(e) => {
-            console_error!("Error setting commands: {:?}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"status": "error", "message": "Failed to set commands."})))
-        }
-    }
-}
