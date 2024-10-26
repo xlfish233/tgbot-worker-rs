@@ -8,7 +8,7 @@ use controller::init::*;
 use frankenstein::Message; // 导入 SetMyCommandsParams
 use serde_json::json;
 use crate::state::AppState;
-use crate::service::TelegramService;
+use crate::plugin::command_handler::{Command, handle_command}; // 修正导入为逗号分隔
 
 pub async fn axum_router(env: Env) -> axum::Router {
     let state = AppState::new(env);
@@ -38,34 +38,9 @@ pub async fn telegram_message(
     let chat_id = message.chat.id;
     let text = message.text.unwrap_or_default();
 
-    if text == "/version" {
-        // 从状态中获取版本信息
-        let version_info = AppState::version(); // 使用 AppState 中的 version 方法
-        let response_body = json!({
-            "status": "success",
-            "message": format!("Current version: {}", version_info),
-            "chat_id": chat_id
-        });
-
-        // 发送回复
-        let reply_params = frankenstein::SendMessageParams {
-            business_connection_id: None,
-            chat_id: frankenstein::ChatId::Integer(chat_id),
-            message_thread_id: None,
-            text: format!("Current version: {}", version_info),
-            parse_mode: None,
-            entities: None,
-            link_preview_options: None,
-            disable_notification: None,
-            protect_content: None,
-            message_effect_id: None,
-            reply_parameters: None,
-            reply_markup: None,
-        };
-
-        let _ = TelegramService::send_message(&reply_params, &env).await; // 发送消息
-
-        return (StatusCode::OK, Json(response_body));
+    if let Some(command) = Command::from_text(&text) {
+        handle_command(command, chat_id, &env).await; // 调用命令处理插件
+        return (StatusCode::OK, Json(json!({"status": "success", "chat_id": chat_id})));
     }
 
     // 构建默认的 JSON 响应
