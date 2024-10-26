@@ -33,7 +33,6 @@ pub async fn handle_command(command: Command, chat_id: i64, env: &crate::state::
             };
 
             let _ = crate::service::TelegramService::send_message(&reply_params, env).await;
-        }
-        // 处理其他命令
+        } // 处理其他命令
     }
 }

@@ -1,9 +1,9 @@
 mod route;
 
 mod controller;
+mod plugin;
 mod service;
 mod state;
-mod plugin;
 
 pub use anyhow::anyhow;
 pub use anyhow::Context as AnyhowContext;

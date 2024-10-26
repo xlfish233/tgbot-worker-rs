@@ -7,9 +7,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(env: Env) -> Self {
-        Self {
-            env,
-        }
+        Self { env }
     }
     pub fn is_test(&self) -> bool {
         if let Ok(key) = self.env.var("TEST") {
@@ -17,6 +15,7 @@ impl AppState {
         }
         false
     }
-    pub fn version()-> &'static str{ "0.1.0" }
-
+    pub fn version() -> &'static str {
+        "0.1.0"
+    }
 }

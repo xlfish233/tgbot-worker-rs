@@ -1,18 +1,21 @@
 use anyhow::anyhow;
 use frankenstein::{
-    AsyncTelegramApi, DeleteWebhookParams, MethodResponse, SetMyCommandsParams, SetWebhookParams,
-    WebhookInfo, BotCommand, SendMessageParams, Message,
+    AsyncTelegramApi, BotCommand, DeleteWebhookParams, Message, MethodResponse, SendMessageParams,
+    SetMyCommandsParams, SetWebhookParams, WebhookInfo,
 };
 
-use worker::*;
-use crate::state::AppState;
 use super::*;
+use crate::state::AppState;
+use worker::*;
 
 pub struct TelegramService {}
 
 macro_rules! define_telegram_method {
     ($name:ident, $method:ident, $params:ty) => {
-        pub async fn $name(params: &$params, state: &AppState) -> AnyhowResult<MethodResponse<bool>> {
+        pub async fn $name(
+            params: &$params,
+            state: &AppState,
+        ) -> AnyhowResult<MethodResponse<bool>> {
             let api = get_cli_from_env(&state.env).context("Failed to get telegram api")?;
             api.$method(params).await.context("request fail")
         }
@@ -45,9 +48,12 @@ impl TelegramService {
     define_telegram_method!(set_webhook, set_webhook, SetWebhookParams);
     define_telegram_method!(delete_webhook, delete_webhook, DeleteWebhookParams);
     define_telegram_method!(set_my_commands, set_my_commands, SetMyCommandsParams);
-    
+
     // 新增的 send_message 方法
-    pub async fn send_message(params: &SendMessageParams, state: &AppState) -> AnyhowResult<MethodResponse<Message>> {
+    pub async fn send_message(
+        params: &SendMessageParams,
+        state: &AppState,
+    ) -> AnyhowResult<MethodResponse<Message>> {
         let api = get_cli_from_env(&state.env).context("Failed to get telegram api")?;
         let result = api.send_message(params).await?;
         Ok(result) // 返回 result
@@ -60,7 +66,7 @@ impl TelegramService {
             scope: None,
             language_code: None,
         };
-        
+
         // 修复调用并返回 bool
         Self::set_my_commands(&params, state).await.map(|_| true)
     }

@@ -1,14 +1,14 @@
+use crate::plugin::command_handler::{handle_command, Command};
+use crate::state::AppState;
 use crate::*;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::Json;
-use controller::settings::*;
 use controller::init::*;
+use controller::settings::*;
 use frankenstein::Message; // 导入 SetMyCommandsParams
-use serde_json::json;
-use crate::state::AppState;
-use crate::plugin::command_handler::{Command, handle_command}; // 修正导入为逗号分隔
+use serde_json::json; // 修正导入为逗号分隔
 
 pub async fn axum_router(env: Env) -> axum::Router {
     let state = AppState::new(env);
@@ -40,7 +40,10 @@ pub async fn telegram_message(
 
     if let Some(command) = Command::from_text(&text) {
         handle_command(command, chat_id, &env).await; // 调用命令处理插件
-        return (StatusCode::OK, Json(json!({"status": "success", "chat_id": chat_id})));
+        return (
+            StatusCode::OK,
+            Json(json!({"status": "success", "chat_id": chat_id})),
+        );
     }
 
     // 构建默认的 JSON 响应
