@@ -6,20 +6,20 @@ use axum::Json;
 use controller::settings::*;
 use frankenstein::Message;
 use serde_json::json;
+use crate::state::AppState;
 
 pub async fn axum_router(env: Env) -> axum::Router {
+    let state = AppState::new(env);
     let mut router = axum::Router::new()
         .route("/", get(root))
         .route("/telegramMessage", post(telegram_message));
-    if let Ok(key) = env.var("binding") {
-        if key.to_string() == "1" {
-            router = router.nest("/telegramApi", telegram_api_router());
-        }
+    if state.is_test() {
+        router = router.nest("/telegramApi", telegram_api_router());
     }
-    router.with_state(env)
+    router.with_state(state)
 }
 
-pub fn telegram_api_router() -> axum::Router<Env> {
+pub fn telegram_api_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/getWebhookInfo", get(get_webhook_info))
         .route("/setWebhook", post(set_webhook))
@@ -29,7 +29,7 @@ pub fn telegram_api_router() -> axum::Router<Env> {
 }
 
 pub async fn telegram_message(
-    State(_env): State<Env>,
+    State(_env): State<AppState>,
     Json(message): Json<Message>,
 ) -> impl axum::response::IntoResponse {
     let chat_id = message.chat.id;

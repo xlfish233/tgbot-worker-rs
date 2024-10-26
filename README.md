@@ -19,8 +19,8 @@ custom logic for responding to different commands and events.
 
 **Note:** The `telegramApi` is designed for users who have difficulty accessing
 Telegram directly for debugging purposes. It will directly retrieve the API from
-the secret, so users do not need to use the API themselves. It should not be
-used in production. Therefore, do not set `ENABLE_TELEGRAM_API` to `1` in
+the secret when you set `TEST_ENV` to `1`, so users do not need to use the API themselves. It should not be
+used in production. Therefore, do not set `TEST_ENV` to `1` in
 production environments.
 
 ## Features

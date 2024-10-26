@@ -2,7 +2,7 @@ mod route;
 
 mod controller;
 mod service;
-mod wrapped_response;
+mod state;
 
 pub use anyhow::anyhow;
 pub use anyhow::Context as AnyhowContext;
@@ -10,7 +10,6 @@ pub use anyhow::Result as AnyhowResult;
 pub use serde::{Deserialize, Serialize};
 use tower_service::Service;
 use worker::*;
-pub use wrapped_response::wrapped_response;
 
 #[event(fetch)]
 async fn fetch(

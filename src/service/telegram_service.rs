@@ -5,22 +5,22 @@ use frankenstein::{
 };
 
 use worker::*;
-
+use crate::state::AppState;
 use super::*;
 
 pub struct TelegramService {}
 
 macro_rules! define_telegram_method {
     ($name:ident, $method:ident, $params:ty) => {
-        pub async fn $name(params: &$params, env: &Env) -> AnyhowResult<MethodResponse<bool>> {
-            let api = get_cli_from_env(env).context("Failed to get telegram api")?;
+        pub async fn $name(params: &$params, state: &AppState) -> AnyhowResult<MethodResponse<bool>> {
+            let api = get_cli_from_env(&state.env).context("Failed to get telegram api")?;
             api.$method(params).await.context("request fail")
         }
     };
 
     ($name:ident, $method:ident) => {
-        pub async fn $name(env: &Env) -> AnyhowResult<MethodResponse<WebhookInfo>> {
-            let api = get_cli_from_env(env).context("Failed to get telegram api")?;
+        pub async fn $name(state: &AppState) -> AnyhowResult<MethodResponse<WebhookInfo>> {
+            let api = get_cli_from_env(&state.env).context("Failed to get telegram api")?;
             api.$method().await.context("request fail")
         }
     };
@@ -31,8 +31,8 @@ impl TelegramService {
     define_telegram_method!(delete_webhook, delete_webhook, DeleteWebhookParams);
     // define_telegram_method!(get_webhook_info, get_webhook_info);
     define_telegram_method!(set_my_commands, set_my_commands, SetMyCommandsParams);
-    pub async fn get_webhook_info(env: &Env) -> AnyhowResult<WebhookInfo> {
-        let api = get_cli_from_env(env).context("Failed to get telegram api")?;
+    pub async fn get_webhook_info(state: &AppState) -> AnyhowResult<WebhookInfo> {
+        let api = get_cli_from_env(&state.env).context("Failed to get telegram api")?;
         //print api uri
         console_log!("{}", api.api_url);
         let result = api.get_webhook_info().await?;
