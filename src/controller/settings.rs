@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use frankenstein::{DeleteWebhookParams, SetMyCommandsParams, SetWebhookParams};
-use worker::{console_error};
+use worker::console_error;
 macro_rules! define_telegram_function {
     ($func_name:ident, $service_func:ident, $params_type:ty) => {
         #[worker::send]

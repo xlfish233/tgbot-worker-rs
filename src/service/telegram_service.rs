@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use frankenstein::{
     AsyncTelegramApi, DeleteWebhookParams, MethodResponse, SetMyCommandsParams, SetWebhookParams,
-    WebhookInfo, BotCommand,
+    WebhookInfo, BotCommand, SendMessageParams, Message,
 };
 
 use worker::*;
@@ -46,6 +46,13 @@ impl TelegramService {
     define_telegram_method!(delete_webhook, delete_webhook, DeleteWebhookParams);
     define_telegram_method!(set_my_commands, set_my_commands, SetMyCommandsParams);
     
+    // 新增的 send_message 方法
+    pub async fn send_message(params: &SendMessageParams, state: &AppState) -> AnyhowResult<MethodResponse<Message>> {
+        let api = get_cli_from_env(&state.env).context("Failed to get telegram api")?;
+        let result = api.send_message(params).await?;
+        Ok(result) // 返回 result
+    }
+
     // 使用宏重构的init_commands函数
     pub async fn init_commands(commands: Vec<BotCommand>, state: &AppState) -> AnyhowResult<bool> {
         let params = SetMyCommandsParams {
