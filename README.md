@@ -13,6 +13,7 @@ This project is a Telegram bot running on Cloudflare Workers, built using Rust.
     - [Description](#description)
     - [Features](#features)
     - [Usage Example](#usage-example)
+    - [Version Command](#version-command)
     - [Project Details](#project-details)
     - [Get Started](#get-started)
         - [Setup Instructions](#setup-instructions)
@@ -61,6 +62,10 @@ fn handle_command(command: &str) {
     }
 }
 ```
+
+## Version Command
+
+If everything is configured correctly, sending the `/version` command to your bot will reply with `Current version: 0.1.0`.
 
 ## Project Details
 
