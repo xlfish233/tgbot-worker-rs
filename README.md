@@ -9,20 +9,20 @@ This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 ## Table of Contents
 
 - [Telegram Bot Worker (Rust)](#telegram-bot-worker-rust)
-  - [Table of Contents](#table-of-contents)
-  - [Description](#description)
-  - [Features](#features)
-  - [Usage Example](#usage-example)
-  - [Project Details](#project-details)
-  - [Get Started](#get-started)
-    - [Setup Instructions](#setup-instructions)
-    - [Webhook Setup](#webhook-setup)
-  - [API Documentation](#api-documentation)
-    - [Endpoints](#endpoints)
-  - [Contributing](#contributing)
-    - [Special Notes](#special-notes)
-    - [Code Review Process](#code-review-process)
-  - [License](#license)
+    - [Table of Contents](#table-of-contents)
+    - [Description](#description)
+    - [Features](#features)
+    - [Usage Example](#usage-example)
+    - [Project Details](#project-details)
+    - [Get Started](#get-started)
+        - [Setup Instructions](#setup-instructions)
+        - [Webhook Setup](#webhook-setup)
+    - [API Documentation](#api-documentation)
+        - [Endpoints](#endpoints)
+    - [Contributing](#contributing)
+        - [Special Notes](#special-notes)
+        - [Code Review Process](#code-review-process)
+    - [License](#license)
 
 ## Description
 
@@ -32,9 +32,9 @@ custom logic for responding to different commands and events.
 
 **Note:** The `telegramApi` is designed for users who have difficulty accessing
 Telegram directly for debugging purposes. It will directly retrieve the API from
-the secret when you set `TEST_ENV` to `1`, so users do not need to use the API themselves. It should not be
-used in production. Therefore, do not set `TEST_ENV` to `1` in
-production environments.
+the secret when you set `TEST_ENV` to `1`, so users do not need to use the API
+themselves. It should not be used in production. Therefore, do not set
+`TEST_ENV` to `1` in production environments.
 
 ## Features
 
@@ -75,7 +75,8 @@ fn handle_command(command: &str) {
   Workers.
 - `console_error_panic_hook`: Captures and logs panic messages to the console.
 - `serde`: Enables serialization and deserialization of data structures.
-- `serde_json`: Provides JSON serialization and deserialization support. # Added serde_json dependency
+- `serde_json`: Provides JSON serialization and deserialization support. # Added
+  serde_json dependency
 - `frankenstein`: A library for interacting with the Telegram Bot API.
 - `anyhow`: Provides a convenient way to handle errors.
 - `convert_case`: A utility for converting case styles.
@@ -137,13 +138,17 @@ follow these steps:
 
 ### Special Notes
 
-You can implement simple functionalities by adding logic in `src/plugin/command_handler.rs`. 
-If you need additional features or have specific requests, please contact the author or open an issue; the author will do their best to consider and fulfill them.
+You can implement simple functionalities by adding logic in
+`src/plugin/command_handler.rs`. If you need additional features or have
+specific requests, please contact the author or open an issue; the author will
+do their best to consider and fulfill them.
 
 ### Code Review Process
 
-To ensure code quality, all contributions will be reviewed by the maintainers. Please be patient during this process.
+To ensure code quality, all contributions will be reviewed by the maintainers.
+Please be patient during this process.
 
 ## License
 
-This project is licensed under the WTFPL License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the WTFPL License - see the [LICENSE](LICENSE)
+file for details.
