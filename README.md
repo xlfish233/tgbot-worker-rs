@@ -6,6 +6,8 @@
 
 This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 
+[查看中文说明](README_ZH.md)
+
 ## Table of Contents
 
 - [Telegram Bot Worker (Rust)](#telegram-bot-worker-rust)
@@ -36,6 +38,8 @@ Telegram directly for debugging purposes. It will directly retrieve the API from
 the secret when you set `TEST_ENV` to `1`, so users do not need to use the API
 themselves. It should not be used in production. Therefore, do not set
 `TEST_ENV` to `1` in production environments.
+
+**Project Status:** This project is still under development and currently only has basic implementations. If you have any good suggestions, please feel free to propose them, and they will be considered for implementation.
 
 ## Features
 
