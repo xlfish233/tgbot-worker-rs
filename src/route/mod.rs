@@ -1,4 +1,3 @@
-use crate::plugin::command_handler::{handle_command, Command};
 use crate::state::AppState;
 use crate::*;
 
@@ -16,7 +15,7 @@ pub async fn axum_router(env: Env) -> axum::Router {
     let mut router = axum::Router::new()
         .route("/", get(root))
         .route("/telegramMessage", post(telegram_message))
-        .route("/init", post(init)); // 添加新的路由
+        .route("/init", post(init));
     if state.is_test() {
         router = router.nest("/telegramApi", telegram_api_router());
     }
@@ -33,25 +32,20 @@ pub fn telegram_api_router() -> axum::Router<AppState> {
 
 #[worker::send]
 pub async fn telegram_message(
-    State(env): State<AppState>,
+    State(mut state): State<AppState>,
     Json(update): Json<Update>,
 ) -> impl axum::response::IntoResponse {
     console_log!("telegram_message: {:?}", update);
     let message = match update.content {
-        UpdateContent::Message(message) => Some(message),
+        UpdateContent::Message(ref message) => Some(message),
         _ => None,
     };
     if let Some(m) = message {
-        let chat_id = m.chat.id;
-        let text = m.text.unwrap_or_default();
-
-        if let Some(command) = Command::from_text(&text) {
-            handle_command(command, chat_id, &env).await; // 调用命令处理插件
-            return (
-                StatusCode::OK,
-                Json(json!({"status": "success", "chat_id": chat_id})),
-            );
-        }
+        let _chat_id = m.chat.id;
+        let _text = m.text.clone().unwrap_or_default();
+    }
+    if let Err(e) = state.app.on_update(update, state.env.clone()).await {
+        console_log!("Error handling update: {:?}", e);
     }
     (StatusCode::OK, Json(json!({"status": "success"})))
 }

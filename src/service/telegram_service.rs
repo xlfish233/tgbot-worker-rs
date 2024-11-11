@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use frankenstein::{
-    AsyncTelegramApi, BotCommand, DeleteWebhookParams, Message, MethodResponse, SendMessageParams,
-    SetMyCommandsParams, SetWebhookParams, WebhookInfo,
+    AsyncTelegramApi, BotCommand, DeleteWebhookParams, MethodResponse, SetMyCommandsParams,
+    SetWebhookParams, WebhookInfo,
 };
 
 use super::*;
@@ -49,17 +49,6 @@ impl TelegramService {
     define_telegram_method!(delete_webhook, delete_webhook, DeleteWebhookParams);
     define_telegram_method!(set_my_commands, set_my_commands, SetMyCommandsParams);
 
-    // 新增的 send_message 方法
-    pub async fn send_message(
-        params: &SendMessageParams,
-        state: &AppState,
-    ) -> AnyhowResult<MethodResponse<Message>> {
-        let api = get_cli_from_env(&state.env).context("Failed to get telegram api")?;
-        let result = api.send_message(params).await?;
-        Ok(result) // 返回 result
-    }
-
-    // 使用宏重构的init_commands函数
     pub async fn init_commands(commands: Vec<BotCommand>, state: &AppState) -> AnyhowResult<bool> {
         let params = SetMyCommandsParams {
             commands,
@@ -67,10 +56,8 @@ impl TelegramService {
             language_code: None,
         };
 
-        // 修复调用并返回 bool
         Self::set_my_commands(&params, state).await.map(|_| true)
     }
 
-    // 使用宏重构的get_webhook_info函数
     define_telegram_method_no_params!(get_webhook_info);
 }
