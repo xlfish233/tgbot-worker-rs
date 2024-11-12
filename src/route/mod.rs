@@ -32,7 +32,7 @@ pub fn telegram_api_router() -> axum::Router<AppState> {
 
 #[worker::send]
 pub async fn telegram_message(
-    State(mut state): State<AppState>,
+    State(state): State<AppState>,
     Json(update): Json<Update>,
 ) -> impl axum::response::IntoResponse {
     console_log!("telegram_message: {:?}", update);

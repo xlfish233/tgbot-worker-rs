@@ -12,7 +12,8 @@ release = false
 wasm-opt = false
 
 [lib]
-crate-type = ["cdylib"]
+name = "tgbot_worker_rs"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0.90"

@@ -1,0 +1,24 @@
+[package]
+name = "version"
+version = "0.1.0"
+edition = "2021"
+authors = [ "xlfish233 <446304319@qq.com>" ]
+
+[package.metadata.release]
+release = false
+
+# https://github.com/rustwasm/wasm-pack/issues/1247
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+worker = { version="0.4.2", features=['http', 'axum'] }
+worker-macros = { version="0.4.2", features=['http'] }
+axum  = { version = "0.7", default-features = false }
+tower-service = "0.3.2"
+console_error_panic_hook = { version = "0.1.1" }
+frankenstein = { git = "https://github.com/xlfish233/frankenstein", branch = "wasm-sup", features = ["async-http-client"], default-features = false }
+tgbot-worker-rs = { path = "../.." }
