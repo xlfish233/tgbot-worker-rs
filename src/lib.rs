@@ -1,23 +1,21 @@
 mod controller;
 mod route;
-mod service;
+pub mod service;
 mod state;
 
 use crate::state::AppState;
 pub use anyhow::anyhow;
 pub use anyhow::Context as AnyhowContext;
 pub use anyhow::Result as AnyhowResult;
-pub use frankenstein::objects as frankensteinObject;
+pub use frankenstein;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use frankenstein::Update;
 use tower_service::Service;
 use worker::*;
 
-use frankensteinObject::Update;
-
-// 使用 Arc 和 dyn 特征对象来实现 Sync 和 Send
-type UpdateFuture = Pin<Box<dyn Future<Output = AnyhowResult<()>> + Send>>;
+type UpdateFuture = Pin<Box<dyn Future<Output=AnyhowResult<()>> + Send>>;
 type UpdateHandler = Arc<dyn Fn(Update, Env) -> UpdateFuture + Send + Sync>;
 
 #[derive(Default)]
@@ -56,11 +54,11 @@ impl App {
         }
     }
 
-    // 使用 Arc 和 dyn 特征对象来实现 Sync 和 Send
+
     pub fn set_on_update<F, Fut>(&mut self, handler: F)
     where
         F: Fn(Update, Env) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = AnyhowResult<()>> + Send + 'static,
+        Fut: Future<Output=AnyhowResult<()>> + Send + 'static,
     {
         self.on_update = Some(Arc::new(move |update, env| {
             Box::pin(handler(update, env)) as UpdateFuture

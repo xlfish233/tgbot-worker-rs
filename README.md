@@ -15,7 +15,6 @@ This project is a Telegram bot running on Cloudflare Workers, built using Rust.
     - [Description](#description)
     - [Features](#features)
     - [Usage Example](#usage-example)
-    - [Version Command](#version-command)
     - [Project Details](#project-details)
     - [Get Started](#get-started)
         - [Setup Instructions](#setup-instructions)
@@ -55,21 +54,7 @@ themselves. It should not be used in production. Therefore, do not set
 
 ## Usage Example
 
-Here is a simple example of how to use the bot:
-
-```rust
-// Example code to handle a command
-fn handle_command(command: &str) {
-    match command {
-        "/start" => println!("Bot started!"),
-        _ => println!("Unknown command!"),
-    }
-}
-```
-
-## Version Command
-
-If everything is configured correctly, sending the `/version` command to your bot will reply with `Current version: 0.1.0`.
+To see a practical example of how to use this bot, please refer to the `examples` directory. It contains sample code demonstrating how to handle commands and interact with the Telegram Bot API.
 
 ## Project Details
 

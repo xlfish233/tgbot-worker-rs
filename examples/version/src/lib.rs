@@ -1,6 +1,8 @@
+use frankenstein::{AsyncTelegramApi, SendMessageParams};
 use worker::*;
 use tgbot_worker_rs::{App, AnyhowResult};
 use frankenstein::objects::*;
+
 
 #[event(fetch)]
 pub async fn fetch(
@@ -9,22 +11,26 @@ pub async fn fetch(
     ctx: Context,
 ) -> worker::Result<axum::http::Response<axum::body::Body>> {
     let mut app = App::new();
-
-    // 设置更新处理器
     app.set_on_update(handle_update_echo);
-
     app.on_fetch(req, env, ctx).await.map_err(|e| worker::Error::from(e.to_string()))
 }
 
-// 更新处理器函数
+#[worker::send]
 async fn handle_update_echo(update: Update, _env: Env) -> AnyhowResult<()> {
+    let tg_api =tgbot_worker_rs::service::get_cli_from_env(&_env)?;
     match update.content {
         UpdateContent::Message(message) => {
-            // if messsage is /version
+
             if let Some(text) = message.text {
                 if text == "/version" {
                     let response = format!("tgbot-worker-rs version: 0.1.0");
+                    let reply = SendMessageParams::builder()
+                       .chat_id(message.chat.id)
+                       .text(response)
+                       .build();
+                    tg_api.send_message(&reply).await?;
                 }
+
             }
         }
         _ => {}
