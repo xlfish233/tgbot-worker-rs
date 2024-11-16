@@ -1,34 +1,15 @@
-mod controller;
-mod route;
-pub mod service;
-mod state;
-
-use crate::state::AppState;
-pub use anyhow::anyhow;
-pub use anyhow::Context as AnyhowContext;
-pub use anyhow::Result as AnyhowResult;
+use futures_util::future::LocalBoxFuture;
 pub use frankenstein;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use frankenstein::Update;
-use tower_service::Service;
+use std::rc::Rc;
+
 use worker::*;
 
-type UpdateFuture = Pin<Box<dyn Future<Output=AnyhowResult<()>> + Send>>;
-type UpdateHandler = Arc<dyn Fn(Update, Env) -> UpdateFuture + Send + Sync>;
+pub type AsyncHandlerFn<'a> = Rc<dyn 'a + Fn(Request) -> LocalBoxFuture<'a, Result<Response>>>;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct App {
-    on_update: Option<UpdateHandler>,
-}
-
-impl Clone for App {
-    fn clone(&self) -> Self {
-        App {
-            on_update: self.on_update.clone(),
-        }
-    }
+    env: Option<Env>,
+    on_update: Option<AsyncHandlerFn<'static>>,
 }
 
 impl App {
@@ -36,32 +17,42 @@ impl App {
         Self::default()
     }
 
-    pub async fn on_fetch(
-        &self,
-        req: HttpRequest,
-        env: Env,
-        _ctx: Context,
-    ) -> AnyhowResult<axum::http::Response<axum::body::Body>> {
+    #[worker::send]
+    pub async fn on_fetch(&self, req: Request, env: Env, _ctx: Context) -> Result<Response> {
         console_error_panic_hook::set_once();
-        Ok(route::axum_router(env).await.call(req).await?)
+        worker_route(req, env, self.on_update.clone()).await
     }
-
-    async fn on_update(&self, update: Update, env: Env) -> AnyhowResult<()> {
-        if let Some(handler) = self.on_update.as_ref() {
-            handler(update, env).await
-        } else {
-            Ok(())
-        }
+    pub fn set_env(&mut self, env: Env) {
+        self.env = Some(env);
     }
+    pub fn set_on_update(&mut self, handler: AsyncHandlerFn<'static>) {
+        self.on_update = Some(handler);
+    }
+}
 
+fn root<T>(_: Request, _: RouteContext<T>) -> Result<Response> {
+    Response::ok("Bot is running!")
+}
 
-    pub fn set_on_update<F, Fut>(&mut self, handler: F)
-    where
-        F: Fn(Update, Env) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output=AnyhowResult<()>> + Send + 'static,
-    {
-        self.on_update = Some(Arc::new(move |update, env| {
-            Box::pin(handler(update, env)) as UpdateFuture
-        }));
+async fn worker_route(
+    req: Request,
+    env: Env,
+    handler: Option<AsyncHandlerFn<'static>>,
+) -> Result<Response> {
+    Router::with_data(handler)
+        .get("/", root)
+        .post_async("/telegramMessage", telegram_message)
+        .run(req, env)
+        .await
+}
+
+async fn telegram_message(
+    req: Request,
+    ctx: RouteContext<Option<AsyncHandlerFn<'static>>>,
+) -> Result<Response> {
+    let handler = ctx.data;
+    match handler {
+        None => Response::error("Update handler not set", 500),
+        Some(h) => h(req).await,
     }
 }
