@@ -1,11 +1,10 @@
-#wasm target project
-[build]
-target = "wasm32-unknwon-unknown"
+# wasm target is pinned via `.cargo/config.toml`
 
 [package]
 name = "tgbot-worker-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.89"
 authors = ["xiaolin <446304319@qq.com>"]
 
 [package.metadata.release]
@@ -23,7 +22,12 @@ path = "src/lib.rs"
 
 
 console_error_panic_hook = { version = "0.1.7" }
-frankenstein = { version = "0.35", features = ["async-http-client"], default-features = false }
-worker = { version = "0.4.2", features = ["http"] }
+frankenstein = { version = "0", features = ["async-http-client"], default-features = false }
+worker = { version = "0.6.1", features = ["http", "d1"] }
 futures-util = "0.3.31"  # 添加 async-trait 依赖
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
+[features]
+# Optional: enable queue integration when available
+queues = []
