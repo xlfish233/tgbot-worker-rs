@@ -19,10 +19,16 @@ pub type AsyncHandlerFn = Rc<dyn Fn(Request) -> LocalBoxFuture<'static, Result<R
 pub type UpdateHandlerFn =
     Rc<dyn Fn(Update, Env) -> LocalBoxFuture<'static, Result<Option<Response>>>>;
 
+// Middleware: can short-circuit with Some(Response) or continue via `next`
+pub type NextFn = Rc<dyn Fn(Update, Env) -> LocalBoxFuture<'static, Result<Option<Response>>>>;
+pub type MiddlewareFn =
+    Rc<dyn Fn(Update, Env, NextFn) -> LocalBoxFuture<'static, Result<Option<Response>>>>;
+
 #[derive(Clone, Default)]
 struct AppData {
     raw_handler: Option<AsyncHandlerFn>,
     update_handlers: Vec<UpdateHandlerFn>,
+    middlewares: Vec<MiddlewareFn>,
     webhook_path: String,
 }
 
@@ -31,6 +37,7 @@ pub struct App {
     env: Option<Env>,
     raw_handler: Option<AsyncHandlerFn>,
     update_handlers: Vec<UpdateHandlerFn>,
+    middlewares: Vec<MiddlewareFn>,
     webhook_path: String,
 }
 
@@ -51,6 +58,7 @@ impl App {
         AppData {
             raw_handler: self.raw_handler.clone(),
             update_handlers: self.update_handlers.clone(),
+            middlewares: self.middlewares.clone(),
             webhook_path: self.webhook_path.clone(),
         }
     }
@@ -71,6 +79,11 @@ impl App {
     // Register a plugin-style update handler
     pub fn on_update(&mut self, handler: UpdateHandlerFn) {
         self.update_handlers.push(handler);
+    }
+
+    // Register middleware to run before/after handlers. Can short-circuit with a Response.
+    pub fn use_middleware(&mut self, mw: MiddlewareFn) {
+        self.middlewares.push(mw);
     }
 
     // Ergonomic helper: register an async closure/function without manual boxing
@@ -154,13 +167,33 @@ async fn telegram_message(mut req: Request, ctx: RouteContext<AppData>) -> Resul
         match req.json::<Update>().await {
             Ok(update) => {
                 let env = ctx.env.clone();
-                for handler in data.update_handlers.iter() {
-                    if let Some(resp) = handler(update.clone(), env.clone()).await? {
-                        return Ok(resp);
+                // Build base "next" that executes handlers in order
+                let handlers = data.update_handlers.clone();
+                let base_next: NextFn = Rc::new(move |u, e| {
+                    let handlers = handlers.clone();
+                    async move {
+                        for h in handlers.iter() {
+                            if let Some(resp) = h(u.clone(), e.clone()).await? {
+                                return Ok(Some(resp));
+                            }
+                        }
+                        Ok(None)
                     }
+                    .boxed_local()
+                });
+
+                // Wrap with middlewares in reverse order
+                let mut next = base_next;
+                for mw in data.middlewares.iter().cloned().rev() {
+                    let prev = next.clone();
+                    next = Rc::new(move |u, e| mw(u, e, prev.clone()));
                 }
-                // Not handled by any plugin; acknowledge update
-                return Response::ok("");
+
+                // Execute pipeline
+                match next(update, env).await? {
+                    Some(resp) => return Ok(resp),
+                    None => return Response::ok(""),
+                }
             }
             Err(_) => return Response::error("parse update error.", 400),
         }
