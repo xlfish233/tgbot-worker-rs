@@ -18,7 +18,6 @@ pub type AppResult<T = ()> = Result<T>;
 
 // HTTP request handler types
 pub type RequestFuture = LocalBoxFuture<'static, AppResult<Response>>;
-pub type AsyncHandlerFn = Rc<dyn Fn(Request) -> RequestFuture>;
 
 // Legacy update handler output: None to continue, Some(Response) to short-circuit
 pub type UpdateOutcome = Option<Response>;
@@ -37,7 +36,6 @@ pub type MiddlewareFn = Rc<dyn Fn(Update, Env, NextFn) -> FlowFuture>;
 
 #[derive(Clone, Default)]
 struct AppData {
-    raw_handler: Option<AsyncHandlerFn>,
     update_handlers: Vec<UpdateHandler>,
     middlewares: Vec<MiddlewareFn>,
     webhook_path: String,
@@ -45,8 +43,6 @@ struct AppData {
 
 #[derive(Default, Clone)]
 pub struct App {
-    env: Option<Env>,
-    raw_handler: Option<AsyncHandlerFn>,
     update_handlers: Vec<UpdateHandler>,
     middlewares: Vec<MiddlewareFn>,
     webhook_path: String,
@@ -67,7 +63,6 @@ impl App {
 
     fn as_data(&self) -> AppData {
         AppData {
-            raw_handler: self.raw_handler.clone(),
             update_handlers: self.update_handlers.clone(),
             middlewares: self.middlewares.clone(),
             webhook_path: self.webhook_path.clone(),
@@ -79,14 +74,7 @@ impl App {
         console_error_panic_hook::set_once();
         worker_route(req, env, self.as_data()).await
     }
-    // Deprecated: prefer registering update handlers via `on_update`
-    pub fn set_env(&mut self, env: Env) {
-        self.env = Some(env);
-    }
-    // Deprecated: prefer `on_update`
-    pub fn set_on_update(&mut self, handler: AsyncHandlerFn) {
-        self.raw_handler = Some(handler);
-    }
+    // Note: raw request handler and manual env setter were removed in 0.2.0
     // Register a plugin-style update handler (legacy Option-based output)
     pub fn on_update(&mut self, handler: UpdateHandlerFn) {
         let wrapped: UpdateHandler = Rc::new(move |u, e| {
@@ -188,48 +176,39 @@ async fn worker_route(req: Request, env: Env, data: AppData) -> Result<Response>
 async fn telegram_message(mut req: Request, ctx: RouteContext<AppData>) -> Result<Response> {
     let data = ctx.data;
 
-    // Prefer plugin-style update handlers
-    if !data.update_handlers.is_empty() {
-        match req.json::<Update>().await {
-            Ok(update) => {
-                let env = ctx.env.clone();
-                // Build base "next" that executes handlers in order
-                let handlers = data.update_handlers.clone();
-                let base_next: NextFn = Rc::new(move |u, e| {
-                    let handlers = handlers.clone();
-                    async move {
-                        for h in handlers.iter() {
-                            match h(u.clone(), e.clone()).await? {
-                                ControlFlow::Break(resp) => return Ok(ControlFlow::Break(resp)),
-                                ControlFlow::Continue(()) => (),
-                            }
+    match req.json::<Update>().await {
+        Ok(update) => {
+            let env = ctx.env.clone();
+            // Build base "next" that executes handlers in order (may be empty)
+            let handlers = data.update_handlers.clone();
+            let base_next: NextFn = Rc::new(move |u, e| {
+                let handlers = handlers.clone();
+                async move {
+                    for h in handlers.iter() {
+                        match h(u.clone(), e.clone()).await? {
+                            ControlFlow::Break(resp) => return Ok(ControlFlow::Break(resp)),
+                            ControlFlow::Continue(()) => (),
                         }
-                        Ok(ControlFlow::Continue(()))
                     }
-                    .boxed_local()
-                });
-
-                // Wrap with middlewares in reverse order
-                let mut next = base_next;
-                for mw in data.middlewares.iter().cloned().rev() {
-                    let prev = next.clone();
-                    next = Rc::new(move |u, e| mw(u, e, prev.clone()));
+                    Ok(ControlFlow::Continue(()))
                 }
+                .boxed_local()
+            });
 
-                // Execute pipeline
-                match next(update, env).await? {
-                    ControlFlow::Break(resp) => return Ok(resp),
-                    ControlFlow::Continue(()) => return Response::ok(""),
-                }
+            // Wrap with middlewares in reverse order
+            let mut next = base_next;
+            for mw in data.middlewares.iter().cloned().rev() {
+                let prev = next.clone();
+                next = Rc::new(move |u, e| mw(u, e, prev.clone()));
             }
-            Err(_) => return Response::error("parse update error.", 400),
-        }
-    }
 
-    // Fallback to raw request handler if present
-    match data.raw_handler {
-        Some(h) => h(req).await,
-        None => Response::error("Update handler not set", 500),
+            // Execute pipeline
+            match next(update, env).await? {
+                ControlFlow::Break(resp) => Ok(resp),
+                ControlFlow::Continue(()) => Response::ok(""),
+            }
+        }
+        Err(_) => Response::error("parse update error.", 400),
     }
 }
 

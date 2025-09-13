@@ -2,7 +2,7 @@
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-WTFPL-blue)
-![Version](https://img.shields.io/badge/version-0.1.0-orange)
+![Version](https://img.shields.io/badge/version-0.2.0-orange)
 
 This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 
@@ -25,8 +25,8 @@ This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 
 - This project provides a basic Telegram bot framework built on Cloudflare Workers
   using Rust and frankenstein's api.
-- You can write your logic and calling set_on_update `App::set_on_update` to handle incoming message or etc.
-- You can use `App::api` to access async api like using `frankenstein` crate.
+- Register update handlers via `app.on_command(...)`, `app.on_update(...)`, or middleware `app.use_middleware(...)`.
+- Use `frankenstein::AsyncApi` directly to call Telegram API from handlers.
 - If you want known more details of usage please see the `examples` directory.
 
 **Project Status:** This project is still under development and currently only has basic implementations. If you have

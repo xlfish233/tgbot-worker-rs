@@ -2,7 +2,7 @@
 
 ![构建状态](https://img.shields.io/badge/build-passing-brightgreen)
 ![许可证](https://img.shields.io/badge/license-WTFPL-blue)
-![版本](https://img.shields.io/badge/version-0.1.0-orange)
+![版本](https://img.shields.io/badge/version-0.2.0-orange)
 
 该项目是一个运行在 Cloudflare Workers 上的 Telegram 机器人，使用 Rust 构建。
 
@@ -24,8 +24,8 @@
 ## 描述
 
 - 该项目提供了一个基于 Cloudflare Workers 的基本 Telegram 机器人框架，使用 Rust 和 frankenstein 的 API。
-- 您可以编写自己的逻辑并调用 `App::set_on_update` 来处理传入消息等。
-- 您可以使用 `App::api` 访问异步 API，如使用 `frankenstein` crate。
+- 通过 `app.on_command(...)`、`app.on_update(...)` 注册消息处理器，或使用 `app.use_middleware(...)` 挂载中间件。
+- 在处理器里直接使用 `frankenstein::AsyncApi` 调用 Telegram API。
 - 如果您想了解更多使用细节，请参见 `examples` 目录。
 
 **项目状态：** 该项目仍在开发中，目前仅具有基本实现。如果您有任何好的建议，请随时提出，我们将考虑实施。
