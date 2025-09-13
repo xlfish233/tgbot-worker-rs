@@ -4,3 +4,17 @@ compatibility_date = "2024-11-11"
 
 [build]
 command = "cargo install -q worker-build && worker-build --release"
+
+[[kv_namespaces]]
+binding = "KV"
+# TODO: replace with your namespace IDs
+id = "00000000000000000000000000000000"
+preview_id = "11111111111111111111111111111111"
+
+[[d1_databases]]
+binding = "DB"
+# TODO: replace with your database IDs
+database_name = "example_db"
+database_id = "22222222-2222-2222-2222-222222222222"
+# Optional migrations directory if you want to manage schema
+migrations_dir = "migrations"
