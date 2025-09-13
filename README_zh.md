@@ -30,6 +30,8 @@
 
 **项目状态：** 该项目仍在开发中，目前仅具有基本实现。如果您有任何好的建议，请随时提出，我们将考虑实施。
 
+注意：本项目固定目标为 `wasm32-unknown-unknown`（通过 `.cargo/config.toml` 设置）。请先安装目标：`rustup target add wasm32-unknown-unknown`，并优先使用固定工具链版本（例如 `+1.89.0`）运行相关命令。
+
 ## 功能
 
 - **Cloudflare Workers 集成：** 利用 Cloudflare Workers 的强大和可扩展性。
@@ -40,7 +42,10 @@
 
 ## 使用示例
 
-请参考 `examples/version` 示例，展示了命令路由、KV、D1 与消息队列（Queues）的集成。
+请参考以下示例：
+
+- `examples/version`：展示命令路由、KV、D1 与消息队列（Queues）的集成。参见使用说明：[examples/version/README.MD](examples/version/README.MD)
+- `examples/middleware`：展示如何使用中间件（`use_middleware`）以及如何发送“回复消息”。英文版：[examples/middleware/README.MD](examples/middleware/README.MD) · 中文版：[examples/middleware/README_zh.MD](examples/middleware/README_zh.MD)
 
 **示例可用命令**
 

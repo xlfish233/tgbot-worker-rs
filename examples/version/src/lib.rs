@@ -1,7 +1,7 @@
+use tgbot_worker_rs::App;
 use tgbot_worker_rs::frankenstein::{AsyncApi, AsyncTelegramApi, SendMessageParams, UpdateContent};
 use tgbot_worker_rs::storage::d1::D1Client;
 use tgbot_worker_rs::storage::kv::KvClient;
-use tgbot_worker_rs::App;
 use worker::*;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -27,10 +27,7 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
             // exact match is already handled by on_command, but we keep safe guards
             if text.split_whitespace().next().unwrap_or("") == "/version" {
                 let tg_api = AsyncApi::new(&api_key);
-                let response = format!(
-                    "tgbot-worker-rs version: {}",
-                    env!("CARGO_PKG_VERSION")
-                );
+                let response = format!("tgbot-worker-rs version: {}", env!("CARGO_PKG_VERSION"));
                 let reply = SendMessageParams::builder()
                     .chat_id(message.chat.id)
                     .text(response)
@@ -56,9 +53,14 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 
             let queue = match env.queue("QUEUE") {
                 Ok(q) => q,
-                Err(e) => return Response::error(format!("QUEUE binding error: {}", e), 500).map(Some),
+                Err(e) => {
+                    return Response::error(format!("QUEUE binding error: {}", e), 500).map(Some);
+                }
             };
-            let job = QueueJob { chat_id: message.chat.id, text: payload };
+            let job = QueueJob {
+                chat_id: message.chat.id,
+                text: payload,
+            };
             if let Err(e) = queue.send(job).await {
                 return Response::error(format!("queue send error: {}", e), 500).map(Some);
             }
@@ -72,29 +74,38 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
         if let UpdateContent::Message(message) = update.content.clone()
             && let Some(text) = message.text
         {
-                let mut parts = text.splitn(3, ' ');
-                let _cmd = parts.next(); // /kv_set
-                let key = match parts.next() { Some(k) => k, None => return Response::error("Usage: /kv_set <key> <value>", 400).map(Some) };
-                let val = match parts.next() { Some(v) => v, None => return Response::error("Usage: /kv_set <key> <value>", 400).map(Some) };
+            let mut parts = text.splitn(3, ' ');
+            let _cmd = parts.next(); // /kv_set
+            let key = match parts.next() {
+                Some(k) => k,
+                None => return Response::error("Usage: /kv_set <key> <value>", 400).map(Some),
+            };
+            let val = match parts.next() {
+                Some(v) => v,
+                None => return Response::error("Usage: /kv_set <key> <value>", 400).map(Some),
+            };
 
-                let kv = match KvClient::from_env(&env, "KV") {
-                    Ok(kv) => kv.with_prefix("demo"),
-                    Err(_) => return Response::error("KV binding 'KV' not found", 500).map(Some),
-                };
-                if let Err(e) = kv.put_text(key, val, None).await {
-                    return Response::error(format!("KV put error: {}", e), 500).map(Some);
-                }
+            let kv = match KvClient::from_env(&env, "KV") {
+                Ok(kv) => kv.with_prefix("demo"),
+                Err(_) => return Response::error("KV binding 'KV' not found", 500).map(Some),
+            };
+            if let Err(e) = kv.put_text(key, val, None).await {
+                return Response::error(format!("KV put error: {}", e), 500).map(Some);
+            }
 
-                let api_key = match env.secret("API_KEY") { Ok(s) => s.to_string(), Err(_) => String::new() };
-                if !api_key.is_empty() {
-                    let tg = AsyncApi::new(&api_key);
-                    let reply = SendMessageParams::builder()
-                        .chat_id(message.chat.id)
-                        .text(format!("KV set ok: {}", key))
-                        .build();
-                    let _ = tg.send_message(&reply).await;
-                }
-                return Response::ok("").map(Some);
+            let api_key = match env.secret("API_KEY") {
+                Ok(s) => s.to_string(),
+                Err(_) => String::new(),
+            };
+            if !api_key.is_empty() {
+                let tg = AsyncApi::new(&api_key);
+                let reply = SendMessageParams::builder()
+                    .chat_id(message.chat.id)
+                    .text(format!("KV set ok: {}", key))
+                    .build();
+                let _ = tg.send_message(&reply).await;
+            }
+            return Response::ok("").map(Some);
         }
         Ok(None)
     });
@@ -104,27 +115,39 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
         if let UpdateContent::Message(message) = update.content.clone()
             && let Some(text) = message.text
         {
-                let mut parts = text.splitn(2, ' ');
-                let _cmd = parts.next(); // /kv_get
-                let key = match parts.next() { Some(k) => k, None => return Response::error("Usage: /kv_get <key>", 400).map(Some) };
+            let mut parts = text.splitn(2, ' ');
+            let _cmd = parts.next(); // /kv_get
+            let key = match parts.next() {
+                Some(k) => k,
+                None => return Response::error("Usage: /kv_get <key>", 400).map(Some),
+            };
 
-                let kv = match KvClient::from_env(&env, "KV") {
-                    Ok(kv) => kv.with_prefix("demo"),
-                    Err(_) => return Response::error("KV binding 'KV' not found", 500).map(Some),
-                };
-                let value = kv.get_text(key).await.map_err(|e| worker::Error::from(e.to_string()))?;
+            let kv = match KvClient::from_env(&env, "KV") {
+                Ok(kv) => kv.with_prefix("demo"),
+                Err(_) => return Response::error("KV binding 'KV' not found", 500).map(Some),
+            };
+            let value = kv
+                .get_text(key)
+                .await
+                .map_err(|e| worker::Error::from(e.to_string()))?;
 
-                let msg = match value { Some(v) => format!("KV[{}] = {}", key, v), None => format!("KV[{}] = <missing>", key) };
-                let api_key = match env.secret("API_KEY") { Ok(s) => s.to_string(), Err(_) => String::new() };
-                if !api_key.is_empty() {
-                    let tg = AsyncApi::new(&api_key);
-                    let reply = SendMessageParams::builder()
-                        .chat_id(message.chat.id)
-                        .text(msg)
-                        .build();
-                    let _ = tg.send_message(&reply).await;
-                }
-                return Response::ok("").map(Some);
+            let msg = match value {
+                Some(v) => format!("KV[{}] = {}", key, v),
+                None => format!("KV[{}] = <missing>", key),
+            };
+            let api_key = match env.secret("API_KEY") {
+                Ok(s) => s.to_string(),
+                Err(_) => String::new(),
+            };
+            if !api_key.is_empty() {
+                let tg = AsyncApi::new(&api_key);
+                let reply = SendMessageParams::builder()
+                    .chat_id(message.chat.id)
+                    .text(msg)
+                    .build();
+                let _ = tg.send_message(&reply).await;
+            }
+            return Response::ok("").map(Some);
         }
         Ok(None)
     });
@@ -153,7 +176,10 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
                 Err(e) => format!("result error: {}", e),
             };
 
-            let api_key = match env.secret("API_KEY") { Ok(s) => s.to_string(), Err(_) => String::new() };
+            let api_key = match env.secret("API_KEY") {
+                Ok(s) => s.to_string(),
+                Err(_) => String::new(),
+            };
             if !api_key.is_empty() {
                 let tg = AsyncApi::new(&api_key);
                 let reply = SendMessageParams::builder()
@@ -174,8 +200,15 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 
 // Consume queue messages and reply in background
 #[event(queue)]
-pub async fn queue_consumer(batch: worker::MessageBatch<QueueJob>, env: Env, _ctx: Context) -> Result<()> {
-    let api_key = match env.secret("API_KEY") { Ok(s) => s.to_string(), Err(_) => String::new() };
+pub async fn queue_consumer(
+    batch: worker::MessageBatch<QueueJob>,
+    env: Env,
+    _ctx: Context,
+) -> Result<()> {
+    let api_key = match env.secret("API_KEY") {
+        Ok(s) => s.to_string(),
+        Err(_) => String::new(),
+    };
     if api_key.is_empty() {
         console_warn!("API_KEY missing; queue messages will be dropped");
         return Ok(());
@@ -185,7 +218,10 @@ pub async fn queue_consumer(batch: worker::MessageBatch<QueueJob>, env: Env, _ct
         let msg = msg?;
         let chat_id = msg.body().chat_id;
         let text = msg.body().text.clone();
-        let reply = SendMessageParams::builder().chat_id(chat_id).text(text).build();
+        let reply = SendMessageParams::builder()
+            .chat_id(chat_id)
+            .text(text)
+            .build();
         match tg.send_message(&reply).await {
             Ok(_) => msg.ack(),
             Err(e) => {

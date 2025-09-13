@@ -1,5 +1,5 @@
-pub use frankenstein;
 use core::ops::ControlFlow;
+pub use frankenstein;
 use frankenstein::Update;
 use frankenstein::UpdateContent;
 use futures_util::FutureExt;
@@ -32,7 +32,6 @@ pub type UpdateHandler = Rc<dyn Fn(Update, Env) -> FlowFuture>;
 // Middleware pipeline types
 pub type NextFn = Rc<dyn Fn(Update, Env) -> FlowFuture>;
 pub type MiddlewareFn = Rc<dyn Fn(Update, Env, NextFn) -> FlowFuture>;
-
 
 #[derive(Clone, Default)]
 struct AppData {
@@ -104,7 +103,7 @@ impl App {
     pub fn on_update_async<F, Fut>(&mut self, f: F)
     where
         F: Fn(Update, Env) -> Fut + 'static,
-        Fut: core::future::Future<Output = AppResult<UpdateOutcome>> + 'static,
+        Fut: Future<Output = AppResult<UpdateOutcome>> + 'static,
     {
         let wrapped: UpdateHandlerFn = Rc::new(move |u, e| f(u, e).boxed_local());
         self.on_update(wrapped);
@@ -115,20 +114,13 @@ impl App {
     where
         P: Fn(&Update) -> bool + 'static,
         F: Fn(Update, Env) -> Fut + 'static,
-        Fut: core::future::Future<Output = AppResult<UpdateOutcome>> + 'static,
+        Fut: Future<Output = AppResult<UpdateOutcome>> + 'static,
     {
         let f = Rc::new(f);
         let wrapped: UpdateHandlerFn = Rc::new(move |u, e| {
             let run = pred(&u);
             let f = f.clone();
-            async move {
-                if run {
-                    f(u, e).await
-                } else {
-                    Ok(None)
-                }
-            }
-            .boxed_local()
+            async move { if run { f(u, e).await } else { Ok(None) } }.boxed_local()
         });
         self.on_update(wrapped);
     }
@@ -137,7 +129,7 @@ impl App {
     pub fn on_command<F, Fut>(&mut self, command: &'static str, f: F)
     where
         F: Fn(Update, Env) -> Fut + 'static,
-        Fut: core::future::Future<Output = AppResult<UpdateOutcome>> + 'static,
+        Fut: Future<Output = AppResult<UpdateOutcome>> + 'static,
     {
         let cmd = if command.starts_with('/') {
             command.to_string()
@@ -220,9 +212,9 @@ pub trait Plugin {
 
 // Lightweight prelude to make imports simpler for users
 pub mod prelude {
+    pub use crate::frankenstein::{Update, UpdateContent};
     pub use crate::{
         App, AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler, UpdateHandlerFn, UpdateOutcome,
     };
-    pub use crate::frankenstein::{Update, UpdateContent};
     pub use worker::{Env, Request, Response, Result};
 }

@@ -32,6 +32,8 @@ This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 **Project Status:** This project is still under development and currently only has basic implementations. If you have
 any good suggestions, please feel free to propose them, and they will be considered for implementation.
 
+Note: This project targets `wasm32-unknown-unknown` (pinned via `.cargo/config.toml`). Install the target with `rustup target add wasm32-unknown-unknown` and prefer running commands with the pinned toolchain (`+1.89.0`).
+
 ## Features
 
 - **Cloudflare Workers Integration:** Leverages the power and scalability of
@@ -46,7 +48,10 @@ any good suggestions, please feel free to propose them, and they will be conside
 
 ## Usage Example
 
-To see a practical example of how to use this bot, please refer to `examples/version`. It shows command routing, Cloudflare KV, D1, and Queues integration.
+See the examples:
+
+- `examples/version`: command routing, Cloudflare KV, D1, and Queues integration. [Guide](examples/version/README.MD) · [中文说明](examples/version/README_zh.MD)
+- `examples/middleware`: how to use middlewares (`use_middleware`) and how to send a reply message. [Guide](examples/middleware/README.MD) · [中文说明](examples/middleware/README_zh.MD)
 
 **Available commands in the example**
 
@@ -98,6 +103,19 @@ To see a practical example of how to use this bot, please refer to `examples/ver
 - Set webhook (replace placeholders):
   - `curl "https://api.telegram.org/bot<API_KEY>/setWebhook?url=<your_worker_url>/telegramMessage"`
 - Send commands to your bot in Telegram to verify behavior
+
+### Middleware example quick start
+
+- Secrets
+  - `cd examples/middleware`
+  - `wrangler secret put API_KEY` (Telegram Bot token)
+- Run locally
+  - `wrangler dev`
+  - Visit `http://127.0.0.1:8787/` → `Bot is running!`
+- Commands
+  - `/reply` — replies to the triggering message using `ReplyParameters`
+  - `/echo <text>` — echoes back the text
+  - `/block` — demonstrates middleware short-circuiting with an immediate reply
 
 ## Project Details
 

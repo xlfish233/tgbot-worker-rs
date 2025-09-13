@@ -5,6 +5,8 @@
 - Runnable Workers live under `examples/<name>/` (see `examples/version/`) with their own `Cargo.toml` and `wrangler.toml`.
 - Tooling: `.cargo/config.toml` pins target `wasm32-unknown-unknown`; top‑level `wrangler.toml` defines build/publish settings.
 
+Notice: Always use the `wasm32-unknown-unknown` target for builds and examples. Ensure the target is installed via `rustup target add wasm32-unknown-unknown`. Prefer running format/lint with the pinned toolchain (e.g., `cargo +1.89.0 fmt`, `cargo +1.89.0 clippy --all-targets -- -D warnings`). Avoid adding features or crates that require OS-level `std` functionality unavailable in Cloudflare Workers.
+
 ## Build, Test, and Development Commands
 - Install target: `rustup target add wasm32-unknown-unknown`.
 - Format/lint: `cargo fmt` and `cargo clippy --all-targets -- -D warnings`.
