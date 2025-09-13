@@ -1,4 +1,3 @@
-use futures_util::future::FutureExt;
 use tgbot_worker_rs::frankenstein::{AsyncApi, AsyncTelegramApi, SendMessageParams, UpdateContent};
 use tgbot_worker_rs::storage::d1::D1Client;
 use tgbot_worker_rs::storage::kv::KvClient;
@@ -16,24 +15,24 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
             Err(_) => return Response::error("API_KEY not found", 500).map(Some),
         };
 
-        if let UpdateContent::Message(message) = update.content {
-            if let Some(text) = message.text {
-                // exact match is already handled by on_command, but we keep safe guards
-                if text.split_whitespace().next().unwrap_or("") == "/version" {
-                    let tg_api = AsyncApi::new(&api_key);
-                    let response = format!(
-                        "tgbot-worker-rs version: {}",
-                        env!("CARGO_PKG_VERSION")
-                    );
-                    let reply = SendMessageParams::builder()
-                        .chat_id(message.chat.id)
-                        .text(response)
-                        .build();
-                    if let Err(e) = tg_api.send_message(&reply).await {
-                        console_error!("Error sending message: {}", e);
-                    }
-                    return Response::ok("").map(Some);
+        if let UpdateContent::Message(message) = update.content
+            && let Some(text) = message.text
+        {
+            // exact match is already handled by on_command, but we keep safe guards
+            if text.split_whitespace().next().unwrap_or("") == "/version" {
+                let tg_api = AsyncApi::new(&api_key);
+                let response = format!(
+                    "tgbot-worker-rs version: {}",
+                    env!("CARGO_PKG_VERSION")
+                );
+                let reply = SendMessageParams::builder()
+                    .chat_id(message.chat.id)
+                    .text(response)
+                    .build();
+                if let Err(e) = tg_api.send_message(&reply).await {
+                    console_error!("Error sending message: {}", e);
                 }
+                return Response::ok("").map(Some);
             }
         }
         Ok(None)
@@ -41,8 +40,9 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 
     // Demonstrate KV: /kv_set <key> <value>
     app.on_command("kv_set", |update, env: Env| async move {
-        if let UpdateContent::Message(message) = update.content.clone() {
-            if let Some(text) = message.text {
+        if let UpdateContent::Message(message) = update.content.clone()
+            && let Some(text) = message.text
+        {
                 let mut parts = text.splitn(3, ' ');
                 let _cmd = parts.next(); // /kv_set
                 let key = match parts.next() { Some(k) => k, None => return Response::error("Usage: /kv_set <key> <value>", 400).map(Some) };
@@ -66,15 +66,15 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
                     let _ = tg.send_message(&reply).await;
                 }
                 return Response::ok("").map(Some);
-            }
         }
         Ok(None)
     });
 
     // Demonstrate KV: /kv_get <key>
     app.on_command("kv_get", |update, env: Env| async move {
-        if let UpdateContent::Message(message) = update.content.clone() {
-            if let Some(text) = message.text {
+        if let UpdateContent::Message(message) = update.content.clone()
+            && let Some(text) = message.text
+        {
                 let mut parts = text.splitn(2, ' ');
                 let _cmd = parts.next(); // /kv_get
                 let key = match parts.next() { Some(k) => k, None => return Response::error("Usage: /kv_get <key>", 400).map(Some) };
@@ -96,7 +96,6 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
                     let _ = tg.send_message(&reply).await;
                 }
                 return Response::ok("").map(Some);
-            }
         }
         Ok(None)
     });
@@ -110,19 +109,19 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
             };
 
             // Simple query without bindings
-            let stmt = match db.db().prepare("SELECT 1 as n") {
-                Ok(s) => s,
-                Err(e) => return Response::error(format!("prepare error: {}", e), 500).map(Some),
-            };
+            let stmt = db.db().prepare("SELECT 1 as n");
             let result = match stmt.all().await {
                 Ok(r) => r,
                 Err(e) => return Response::error(format!("query error: {}", e), 500).map(Some),
             };
 
             // Render result compactly as JSON text
-            let text = match serde_json::to_string(&result.results) {
-                Ok(s) => s,
-                Err(e) => format!("serialize error: {}", e),
+            let text = match result.results::<serde_json::Value>() {
+                Ok(rows) => match serde_json::to_string(&rows) {
+                    Ok(s) => s,
+                    Err(e) => format!("serialize error: {}", e),
+                },
+                Err(e) => format!("result error: {}", e),
             };
 
             let api_key = match env.secret("API_KEY") { Ok(s) => s.to_string(), Err(_) => String::new() };
