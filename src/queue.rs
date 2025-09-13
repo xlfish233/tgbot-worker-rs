@@ -1,4 +1,4 @@
-#![cfg(feature = "queues")]
+#![cfg(feature = "queue")]
 //! Queue facade (behind `queues` feature). The concrete CF queue bindings will be wired here.
 use worker::{Env, Result};
 

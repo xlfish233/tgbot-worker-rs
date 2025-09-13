@@ -18,3 +18,10 @@ database_name = "example_db"
 database_id = "22222222-2222-2222-2222-222222222222"
 # Optional migrations directory if you want to manage schema
 migrations_dir = "migrations"
+
+[[queues.producers]]
+binding = "QUEUE"
+queue = "demo-queue"
+
+[[queues.consumers]]
+queue = "demo-queue"

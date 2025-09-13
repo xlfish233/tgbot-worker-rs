@@ -9,7 +9,7 @@ use std::rc::Rc;
 use worker::*;
 
 pub mod cf;
-#[cfg(feature = "queues")]
+#[cfg(feature = "queue")]
 pub mod queue;
 pub mod storage;
 

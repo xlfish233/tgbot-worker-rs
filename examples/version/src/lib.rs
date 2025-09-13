@@ -4,6 +4,12 @@ use tgbot_worker_rs::storage::kv::KvClient;
 use tgbot_worker_rs::App;
 use worker::*;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct QueueJob {
+    chat_id: i64,
+    text: String,
+}
+
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
     let mut app = App::new();
@@ -34,6 +40,29 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
                 }
                 return Response::ok("").map(Some);
             }
+        }
+        Ok(None)
+    });
+
+    // Demonstrate Queue: /queue_echo <text>
+    app.on_command("queue_echo", |update, env: Env| async move {
+        if let UpdateContent::Message(message) = update.content.clone()
+            && let Some(text) = message.text
+        {
+            let payload = text.split_once(' ').map(|x| x.1).unwrap_or("").to_string();
+            if payload.is_empty() {
+                return Response::error("Usage: /queue_echo <text>", 400).map(Some);
+            }
+
+            let queue = match env.queue("QUEUE") {
+                Ok(q) => q,
+                Err(e) => return Response::error(format!("QUEUE binding error: {}", e), 500).map(Some),
+            };
+            let job = QueueJob { chat_id: message.chat.id, text: payload };
+            if let Err(e) = queue.send(job).await {
+                return Response::error(format!("queue send error: {}", e), 500).map(Some);
+            }
+            return Response::ok("").map(Some);
         }
         Ok(None)
     });
@@ -141,6 +170,31 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
     app.on_fetch(req, env.clone(), ctx)
         .await
         .map_err(|e| worker::Error::from(e.to_string()))
+}
+
+// Consume queue messages and reply in background
+#[event(queue)]
+pub async fn queue_consumer(batch: worker::MessageBatch<QueueJob>, env: Env, _ctx: Context) -> Result<()> {
+    let api_key = match env.secret("API_KEY") { Ok(s) => s.to_string(), Err(_) => String::new() };
+    if api_key.is_empty() {
+        console_warn!("API_KEY missing; queue messages will be dropped");
+        return Ok(());
+    }
+    let tg = AsyncApi::new(&api_key);
+    for msg in batch.iter() {
+        let msg = msg?;
+        let chat_id = msg.body().chat_id;
+        let text = msg.body().text.clone();
+        let reply = SendMessageParams::builder().chat_id(chat_id).text(text).build();
+        match tg.send_message(&reply).await {
+            Ok(_) => msg.ack(),
+            Err(e) => {
+                console_error!("queue send tg error: {}", e);
+                msg.retry();
+            }
+        }
+    }
+    Ok(())
 }
 
 #[event(scheduled)]
