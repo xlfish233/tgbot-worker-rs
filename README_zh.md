@@ -40,7 +40,58 @@
 
 ## 使用示例
 
-要查看如何使用此机器人的实际示例，请参考 `examples` 目录。它包含示例代码，演示如何处理命令并与 Telegram Bot API 交互。
+请参考 `examples/version` 示例，展示了命令路由、KV、D1 与消息队列（Queues）的集成。
+
+**示例可用命令**
+
+- `/version` — 输出包版本
+- `/kv_set <key> <value>` — 在 KV 中写入（前缀 `demo`）
+- `/kv_get <key>` — 从 KV 读取
+- `/d1_ping` — 在 D1 上执行 `SELECT 1 AS n` 并输出 JSON
+- `/queue_echo <text>` — 入队一个任务，由队列消费者异步回发
+
+**快速开始**
+
+- 安装工具链与目标
+  - `rustup toolchain install 1.89.0`
+  - `rustup target add wasm32-unknown-unknown --toolchain 1.89.0`
+- 安装 Wrangler（v3）
+  - `npm i -g wrangler`
+- 格式/检查
+  - `cargo +1.89.0 fmt`
+  - `cargo +1.89.0 clippy --all-targets -- -D warnings`
+
+**为示例配置绑定**
+
+- Secret
+  - `cd examples/version`
+  - `wrangler secret put API_KEY`（Telegram 机器人 Token）
+- KV（在 `examples/version/wrangler.toml` 中替换 ID）
+  - `wrangler kv namespace create tgbot-worker-rs-demo`
+  - 将生成的 `id`、`preview_id` 填入 `[[kv_namespaces]]`，`binding = "KV"`
+- D1
+  - `wrangler d1 create example_db`
+  - 将生成的 `database_id` 填入 `[[d1_databases]]`，`binding = "DB"`
+  - 可选：`wrangler d1 migrations apply DB`（使用 `migrations/0001_init.sql`）
+- 队列（Queues）
+  - `wrangler queues create demo-queue`
+  - 确保 `[[queues.producers]]` 里 `binding = "QUEUE"`，`queue = "demo-queue"`
+  - 确保 `[[queues.consumers]]` 里 `queue = "demo-queue"`
+
+**本地运行**
+
+- `cd examples/version && wrangler dev`
+  - 打开 `http://127.0.0.1:8787/` → `Bot is running!`
+  - D1/Queues 建议使用 `wrangler dev --remote` 以使用云端后端
+  - 本地模拟 Telegram 更新：
+    - `curl -sS -X POST http://127.0.0.1:8787/telegramMessage -H 'content-type: application/json' -d '{"update_id":1,"message":{"message_id":1,"chat":{"id":123,"type":"private"},"text":"/kv_set foo bar"}}'`
+
+**发布并设置 Telegram Webhook**
+
+- `cd examples/version && wrangler publish`
+- 设置 webhook（替换占位符）：
+  - `curl "https://api.telegram.org/bot<API_KEY>/setWebhook?url=<your_worker_url>/telegramMessage"`
+- 在 Telegram 中给你的机器人发送上述命令进行验证
 
 ## 项目详情
 

@@ -6,7 +6,7 @@
 
 This project is a Telegram bot running on Cloudflare Workers, built using Rust.
 
-[查看中文说明](README_ZH.md)
+[查看中文说明](README_zh.md)
 
 ## Table of Contents
 
@@ -46,8 +46,58 @@ any good suggestions, please feel free to propose them, and they will be conside
 
 ## Usage Example
 
-To see a practical example of how to use this bot, please refer to the `examples` directory. It contains sample code
-demonstrating how to handle commands and interact with the Telegram Bot API.
+To see a practical example of how to use this bot, please refer to `examples/version`. It shows command routing, Cloudflare KV, D1, and Queues integration.
+
+**Available commands in the example**
+
+- `/version` — replies with package version
+- `/kv_set <key> <value>` — stores a key/value in KV (prefix `demo`)
+- `/kv_get <key>` — reads the value from KV
+- `/d1_ping` — runs `SELECT 1 AS n` on D1 and echoes rows as JSON
+- `/queue_echo <text>` — enqueues a job and replies from the queue consumer
+
+**Quick start**
+
+- Install toolchain and target
+  - `rustup toolchain install 1.89.0`
+  - `rustup target add wasm32-unknown-unknown --toolchain 1.89.0`
+- Install Wrangler (v3)
+  - `npm i -g wrangler`
+- Format/lint
+  - `cargo +1.89.0 fmt`
+  - `cargo +1.89.0 clippy --all-targets -- -D warnings`
+
+**Configure example bindings**
+
+- Secrets
+  - `cd examples/version`
+  - `wrangler secret put API_KEY` (Telegram Bot token)
+- KV (replace IDs in `examples/version/wrangler.toml`)
+  - `wrangler kv namespace create tgbot-worker-rs-demo`
+  - Copy the `id` and `preview_id` into `[[kv_namespaces]]` with `binding = "KV"`
+- D1
+  - `wrangler d1 create example_db`
+  - Put its `database_id` into `[[d1_databases]]` with `binding = "DB"`
+  - Optional: `wrangler d1 migrations apply DB` (uses `migrations/0001_init.sql`)
+- Queues
+  - `wrangler queues create demo-queue`
+  - Ensure `[[queues.producers]]` has `binding = "QUEUE"`, `queue = "demo-queue"`
+  - Ensure `[[queues.consumers]]` has `queue = "demo-queue"`
+
+**Run locally**
+
+- `cd examples/version && wrangler dev`
+  - Visit `http://127.0.0.1:8787/` → `Bot is running!`
+  - For D1/Queues, prefer `wrangler dev --remote` to run against Cloudflare backend
+  - To simulate a Telegram update locally:
+    - `curl -sS -X POST http://127.0.0.1:8787/telegramMessage -H 'content-type: application/json' -d '{"update_id":1,"message":{"message_id":1,"chat":{"id":123,"type":"private"},"text":"/kv_set foo bar"}}'`
+
+**Publish and set Telegram webhook**
+
+- `cd examples/version && wrangler publish`
+- Set webhook (replace placeholders):
+  - `curl "https://api.telegram.org/bot<API_KEY>/setWebhook?url=<your_worker_url>/telegramMessage"`
+- Send commands to your bot in Telegram to verify behavior
 
 ## Project Details
 
