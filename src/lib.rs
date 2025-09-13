@@ -1,4 +1,5 @@
 pub use frankenstein;
+use core::ops::ControlFlow;
 use frankenstein::Update;
 use frankenstein::UpdateContent;
 use futures_util::FutureExt;
@@ -12,22 +13,32 @@ pub mod cf;
 pub mod queue;
 pub mod storage;
 
-// Backward-compatible raw request handler (used if no update handlers are set)
-pub type AsyncHandlerFn = Rc<dyn Fn(Request) -> LocalBoxFuture<'static, Result<Response>>>;
+// Core result alias to reduce verbosity
+pub type AppResult<T = ()> = Result<T>;
 
-// Preferred plugin-style update handler: returns Some(Response) if handled, None to continue pipeline
-pub type UpdateHandlerFn =
-    Rc<dyn Fn(Update, Env) -> LocalBoxFuture<'static, Result<Option<Response>>>>;
+// HTTP request handler types
+pub type RequestFuture = LocalBoxFuture<'static, AppResult<Response>>;
+pub type AsyncHandlerFn = Rc<dyn Fn(Request) -> RequestFuture>;
 
-// Middleware: can short-circuit with Some(Response) or continue via `next`
-pub type NextFn = Rc<dyn Fn(Update, Env) -> LocalBoxFuture<'static, Result<Option<Response>>>>;
-pub type MiddlewareFn =
-    Rc<dyn Fn(Update, Env, NextFn) -> LocalBoxFuture<'static, Result<Option<Response>>>>;
+// Legacy update handler output: None to continue, Some(Response) to short-circuit
+pub type UpdateOutcome = Option<Response>;
+pub type UpdateFuture = LocalBoxFuture<'static, AppResult<UpdateOutcome>>;
+pub type UpdateHandlerFn = Rc<dyn Fn(Update, Env) -> UpdateFuture>;
+
+// Preferred flow-based handler: Continue or Break(Response)
+pub type Flow = ControlFlow<Response>;
+pub type FlowFuture = LocalBoxFuture<'static, AppResult<Flow>>;
+pub type UpdateHandler = Rc<dyn Fn(Update, Env) -> FlowFuture>;
+
+// Middleware pipeline types
+pub type NextFn = Rc<dyn Fn(Update, Env) -> FlowFuture>;
+pub type MiddlewareFn = Rc<dyn Fn(Update, Env, NextFn) -> FlowFuture>;
+
 
 #[derive(Clone, Default)]
 struct AppData {
     raw_handler: Option<AsyncHandlerFn>,
-    update_handlers: Vec<UpdateHandlerFn>,
+    update_handlers: Vec<UpdateHandler>,
     middlewares: Vec<MiddlewareFn>,
     webhook_path: String,
 }
@@ -36,7 +47,7 @@ struct AppData {
 pub struct App {
     env: Option<Env>,
     raw_handler: Option<AsyncHandlerFn>,
-    update_handlers: Vec<UpdateHandlerFn>,
+    update_handlers: Vec<UpdateHandler>,
     middlewares: Vec<MiddlewareFn>,
     webhook_path: String,
 }
@@ -76,8 +87,23 @@ impl App {
     pub fn set_on_update(&mut self, handler: AsyncHandlerFn) {
         self.raw_handler = Some(handler);
     }
-    // Register a plugin-style update handler
+    // Register a plugin-style update handler (legacy Option-based output)
     pub fn on_update(&mut self, handler: UpdateHandlerFn) {
+        let wrapped: UpdateHandler = Rc::new(move |u, e| {
+            let h = handler.clone();
+            async move {
+                match h(u, e).await? {
+                    Some(resp) => Ok(ControlFlow::Break(resp)),
+                    None => Ok(ControlFlow::Continue(())),
+                }
+            }
+            .boxed_local()
+        });
+        self.update_handlers.push(wrapped);
+    }
+
+    // Register a flow-based handler directly
+    pub fn on_update_flow(&mut self, handler: UpdateHandler) {
         self.update_handlers.push(handler);
     }
 
@@ -90,10 +116,10 @@ impl App {
     pub fn on_update_async<F, Fut>(&mut self, f: F)
     where
         F: Fn(Update, Env) -> Fut + 'static,
-        Fut: core::future::Future<Output = Result<Option<Response>>> + 'static,
+        Fut: core::future::Future<Output = AppResult<UpdateOutcome>> + 'static,
     {
         let wrapped: UpdateHandlerFn = Rc::new(move |u, e| f(u, e).boxed_local());
-        self.update_handlers.push(wrapped);
+        self.on_update(wrapped);
     }
 
     // Conditional handler: run only when `pred(&update)` is true
@@ -101,7 +127,7 @@ impl App {
     where
         P: Fn(&Update) -> bool + 'static,
         F: Fn(Update, Env) -> Fut + 'static,
-        Fut: core::future::Future<Output = Result<Option<Response>>> + 'static,
+        Fut: core::future::Future<Output = AppResult<UpdateOutcome>> + 'static,
     {
         let f = Rc::new(f);
         let wrapped: UpdateHandlerFn = Rc::new(move |u, e| {
@@ -116,14 +142,14 @@ impl App {
             }
             .boxed_local()
         });
-        self.update_handlers.push(wrapped);
+        self.on_update(wrapped);
     }
 
     // Convenience: route a specific Telegram command (e.g., "/version")
     pub fn on_command<F, Fut>(&mut self, command: &'static str, f: F)
     where
         F: Fn(Update, Env) -> Fut + 'static,
-        Fut: core::future::Future<Output = Result<Option<Response>>> + 'static,
+        Fut: core::future::Future<Output = AppResult<UpdateOutcome>> + 'static,
     {
         let cmd = if command.starts_with('/') {
             command.to_string()
@@ -173,11 +199,12 @@ async fn telegram_message(mut req: Request, ctx: RouteContext<AppData>) -> Resul
                     let handlers = handlers.clone();
                     async move {
                         for h in handlers.iter() {
-                            if let Some(resp) = h(u.clone(), e.clone()).await? {
-                                return Ok(Some(resp));
+                            match h(u.clone(), e.clone()).await? {
+                                ControlFlow::Break(resp) => return Ok(ControlFlow::Break(resp)),
+                                ControlFlow::Continue(()) => (),
                             }
                         }
-                        Ok(None)
+                        Ok(ControlFlow::Continue(()))
                     }
                     .boxed_local()
                 });
@@ -191,8 +218,8 @@ async fn telegram_message(mut req: Request, ctx: RouteContext<AppData>) -> Resul
 
                 // Execute pipeline
                 match next(update, env).await? {
-                    Some(resp) => return Ok(resp),
-                    None => return Response::ok(""),
+                    ControlFlow::Break(resp) => return Ok(resp),
+                    ControlFlow::Continue(()) => return Response::ok(""),
                 }
             }
             Err(_) => return Response::error("parse update error.", 400),
