@@ -238,3 +238,12 @@ pub trait Plugin {
     fn name(&self) -> &'static str;
     fn setup(&self, app: &mut App);
 }
+
+// Lightweight prelude to make imports simpler for users
+pub mod prelude {
+    pub use crate::{
+        App, AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler, UpdateHandlerFn, UpdateOutcome,
+    };
+    pub use crate::frankenstein::{Update, UpdateContent};
+    pub use worker::{Env, Request, Response, Result};
+}
