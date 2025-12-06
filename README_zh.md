@@ -23,8 +23,8 @@
 ## 功能特性
 
 - **无服务器优先**：专为 Cloudflare Workers 设计，零冷启动开销
+- **teloxide 风格 API**：简洁的处理器签名 `|bot, msg| async { bot.send_message(...) }`
 - **会话管理**：内置基于 KV 的会话存储，支持类型安全的状态管理
-- **简化 API**：`Context::done()`、`Context::skip()`、`reply_and_done()` 让处理器代码更简洁
 - **过滤器组合**：可组合的过滤器如 `is_message`、`text_contains`、`callback_data_equals`
 - **丰富的 Telegram 方法**：`reply`、`reply_html`、`edit_text`、`delete_message`、`answer_callback`、`send_photo`
 - **中间件支持**：请求/响应管道，支持短路返回
@@ -32,7 +32,7 @@
 
 **项目状态：** 活跃开发中，欢迎贡献！
 
-注意：本项目固定目标为 `wasm32-unknown-unknown`（通过 `.cargo/config.toml` 设置）。请先安装目标：`rustup target add wasm32-unknown-unknown`，并优先使用固定工具链版本（例如 `+1.89.0`）运行相关命令。
+注意：本项目固定目标为 `wasm32-unknown-unknown`（通过 `.cargo/config.toml` 设置）。请先安装目标：`rustup target add wasm32-unknown-unknown`，并优先使用固定工具链版本（例如 `+1.91.1`）运行相关命令。
 
 ## 开发路线图
 
@@ -55,16 +55,54 @@
 
 ## 快速开始
 
+### 简单 API（teloxide 风格）
+
+```rust
+use tgbot_worker_rs::prelude::*;
+use worker::*;
+
+#[event(fetch)]
+pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
+    let mut app = App::new();
+
+    // 处理 /start 命令
+    app.command("start", |bot, msg| async move {
+        bot.send_message(msg.chat_id(), "你好！我是机器人。").await
+    });
+
+    // 处理 /echo <文本> 命令
+    app.command("echo", |bot, msg| async move {
+        let text = msg.command_args().unwrap_or("无内容");
+        bot.send_message(msg.chat_id(), &format!("回显: {}", text)).await
+    });
+
+    // 处理回调查询
+    app.on_callback_query(|bot, query| async move {
+        bot.answer_callback(query.id(), Some("已点击！"), false).await
+    });
+
+    // 其他消息的回退处理
+    app.on_message(|bot, msg| async move {
+        // 跳过命令（已在上面处理）
+        if msg.text().map(|t| t.starts_with('/')).unwrap_or(false) {
+            return Err(BotError::Skip);
+        }
+        bot.send_message(msg.chat_id(), "发送 /start 开始").await
+    });
+
+    app.run(req, env, ctx).await
+}
+```
+
+### 会话 API（用于有状态的处理器）
+
 ```rust
 use serde::{Deserialize, Serialize};
 use tgbot_worker_rs::prelude::*;
-use tgbot_worker_rs::session::{Context, KvStorage};
 use worker::*;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
-struct MyState {
-    counter: u32,
-}
+struct MyState { counter: u32 }
 
 type Ctx = Context<MyState, KvStorage>;
 
@@ -73,57 +111,72 @@ pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Respo
     let mut app = App::new();
     let storage = KvStorage::from_env(&env, "SESSION_KV", "session")?;
 
-    // 带会话的简单命令处理器
-    app.on_command_ctx::<MyState, _, _, _>("count", storage.clone(), |ctx| async move {
+    app.on_command_ctx::<MyState, _, _, _>("count", storage, |ctx| async move {
         let mut state = ctx.session.get();
         state.counter += 1;
         ctx.session.set(state.clone());
         ctx.reply_and_done(&format!("计数: {}", state.counter)).await
     });
 
-    // 处理所有文本消息
-    app.on_update_ctx::<MyState, _, _, _>(storage, |ctx| async move {
-        match ctx.text() {
-            Some(text) if !text.starts_with('/') => {
-                ctx.reply_and_done(&format!("你说: {}", text)).await
-            }
-            _ => Ctx::skip(), // 不是文本消息，跳到下一个处理器
-        }
-    });
-
-    app.on_fetch(req, env, ctx).await.map_err(|e| e.into())
+    app.on_fetch(req, env, ctx).await
 }
 ```
 
 ## API 概览
 
-### Context 方法
+### 简单 API（App 方法）
+
+| 方法 | 描述 |
+|------|------|
+| `app.command("cmd", \|bot, msg\|)` | 处理 `/cmd` 命令 |
+| `app.on_message(\|bot, msg\|)` | 处理所有消息 |
+| `app.on_callback_query(\|bot, query\|)` | 处理回调查询 |
+| `app.run(req, env, ctx)` | 运行机器人 |
+
+### Bot 方法
+
+| 方法 | 描述 |
+|------|------|
+| `bot.send_message(chat_id, text)` | 发送文本消息 |
+| `bot.send_html(chat_id, text)` | 发送 HTML 格式消息 |
+| `bot.reply(&msg, text)` | 回复消息（引用） |
+| `bot.reply_html(&msg, text)` | 回复 HTML 格式消息 |
+| `bot.answer_callback(id, text, alert)` | 响应回调查询 |
+| `bot.edit_message(chat_id, msg_id, text)` | 编辑消息文本 |
+| `bot.delete_message(chat_id, msg_id)` | 删除消息 |
+| `bot.send_photo(chat_id, photo)` | 发送图片 |
+
+### Message 访问器
+
+| 方法 | 描述 |
+|------|------|
+| `msg.chat_id()` | 获取聊天 ID |
+| `msg.message_id()` | 获取消息 ID |
+| `msg.text()` | 获取消息文本 |
+| `msg.from()` | 获取发送者 User |
+| `msg.command()` | 获取命令名（不含 `/`） |
+| `msg.command_args()` | 获取命令参数 |
+
+### CallbackQuery 访问器
+
+| 方法 | 描述 |
+|------|------|
+| `query.id()` | 获取回调查询 ID |
+| `query.data()` | 获取回调数据 |
+| `query.from()` | 获取点击用户 |
+| `query.chat_id()` | 获取聊天 ID |
+| `query.message_id()` | 获取消息 ID |
+
+### Context 方法（会话 API）
 
 | 方法 | 描述 |
 |------|------|
 | `ctx.reply(text)` | 发送文本消息 |
-| `ctx.reply_html(text)` | 发送 HTML 格式消息 |
-| `ctx.reply_to(text)` | 回复当前消息（引用） |
 | `ctx.reply_and_done(text)` | 回复并结束处理 |
 | `ctx.edit_text(text)` | 编辑消息文本 |
 | `ctx.delete_message()` | 删除当前消息 |
-| `ctx.answer_callback(text, show_alert)` | 响应回调查询 |
-| `ctx.send_photo(photo)` | 发送图片 |
 | `Context::done()` | 结束处理器处理 |
 | `Context::skip()` | 跳到下一个处理器 |
-
-### 访问器方法
-
-| 方法 | 描述 |
-|------|------|
-| `ctx.chat_id()` | 获取聊天 ID |
-| `ctx.user_id()` | 获取用户 ID |
-| `ctx.message_id()` | 获取消息 ID |
-| `ctx.text()` | 获取消息文本 |
-| `ctx.command()` | 获取命令名（不含 `/`） |
-| `ctx.command_args()` | 获取命令参数 |
-| `ctx.callback_data()` | 获取回调查询数据 |
-| `ctx.telegram_api()` | 获取原始 Telegram API 客户端 |
 
 ## 会话管理
 
@@ -186,14 +239,14 @@ not(is_command)               // 取反过滤器
 
 ```bash
 # 安装工具链
-rustup toolchain install 1.89.0
-rustup target add wasm32-unknown-unknown --toolchain 1.89.0
+rustup toolchain install 1.91.1
+rustup target add wasm32-unknown-unknown --toolchain 1.91.1
 
 # 安装 Wrangler
 npm i -g wrangler
 
 # 本地运行示例
-cd examples/session
+cd examples/version
 wrangler secret put API_KEY  # 你的 Telegram 机器人 Token
 wrangler dev
 

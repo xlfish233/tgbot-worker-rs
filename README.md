@@ -23,8 +23,8 @@ A lightweight, serverless Telegram bot framework for Cloudflare Workers, built w
 ## Features
 
 - **Serverless-first**: Designed for Cloudflare Workers with zero cold-start overhead
+- **Teloxide-style API**: Simple handler signatures like `|bot, msg| async { bot.send_message(...) }`
 - **Session Management**: Built-in KV-based session storage with type-safe state
-- **Simplified API**: `Context::done()`, `Context::skip()`, `reply_and_done()` for clean handler code
 - **Filter Combinators**: Composable filters like `is_message`, `text_contains`, `callback_data_equals`
 - **Rich Telegram Methods**: `reply`, `reply_html`, `edit_text`, `delete_message`, `answer_callback`, `send_photo`
 - **Middleware Support**: Request/response pipeline with short-circuit capability
@@ -32,7 +32,7 @@ A lightweight, serverless Telegram bot framework for Cloudflare Workers, built w
 
 **Project Status:** Active development. Contributions welcome!
 
-Note: This project targets `wasm32-unknown-unknown` (pinned via `.cargo/config.toml`). Install the target with `rustup target add wasm32-unknown-unknown` and prefer running commands with the pinned toolchain (`+1.89.0`).
+Note: This project targets `wasm32-unknown-unknown` (pinned via `.cargo/config.toml`). Install the target with `rustup target add wasm32-unknown-unknown` and prefer running commands with the pinned toolchain (`+1.91.1`).
 
 ## Roadmap
 
@@ -55,16 +55,54 @@ Planned features and improvements (contributions welcome!):
 
 ## Quick Start
 
+### Simple API (teloxide-style)
+
+```rust
+use tgbot_worker_rs::prelude::*;
+use worker::*;
+
+#[event(fetch)]
+pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
+    let mut app = App::new();
+
+    // Handle /start command
+    app.command("start", |bot, msg| async move {
+        bot.send_message(msg.chat_id(), "Hello! I'm a bot.").await
+    });
+
+    // Handle /echo <text> command
+    app.command("echo", |bot, msg| async move {
+        let text = msg.command_args().unwrap_or("nothing");
+        bot.send_message(msg.chat_id(), &format!("Echo: {}", text)).await
+    });
+
+    // Handle callback queries
+    app.on_callback_query(|bot, query| async move {
+        bot.answer_callback(query.id(), Some("Clicked!"), false).await
+    });
+
+    // Fallback for other messages
+    app.on_message(|bot, msg| async move {
+        // Skip commands (already handled)
+        if msg.text().map(|t| t.starts_with('/')).unwrap_or(false) {
+            return Err(BotError::Skip);
+        }
+        bot.send_message(msg.chat_id(), "Use /start to begin").await
+    });
+
+    app.run(req, env, ctx).await
+}
+```
+
+### Session API (for stateful handlers)
+
 ```rust
 use serde::{Deserialize, Serialize};
 use tgbot_worker_rs::prelude::*;
-use tgbot_worker_rs::session::{Context, KvStorage};
 use worker::*;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
-struct MyState {
-    counter: u32,
-}
+struct MyState { counter: u32 }
 
 type Ctx = Context<MyState, KvStorage>;
 
@@ -73,57 +111,72 @@ pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Respo
     let mut app = App::new();
     let storage = KvStorage::from_env(&env, "SESSION_KV", "session")?;
 
-    // Simple command handler with session
-    app.on_command_ctx::<MyState, _, _, _>("count", storage.clone(), |ctx| async move {
+    app.on_command_ctx::<MyState, _, _, _>("count", storage, |ctx| async move {
         let mut state = ctx.session.get();
         state.counter += 1;
         ctx.session.set(state.clone());
         ctx.reply_and_done(&format!("Count: {}", state.counter)).await
     });
 
-    // Handle all text messages
-    app.on_update_ctx::<MyState, _, _, _>(storage, |ctx| async move {
-        match ctx.text() {
-            Some(text) if !text.starts_with('/') => {
-                ctx.reply_and_done(&format!("You said: {}", text)).await
-            }
-            _ => Ctx::skip(), // Not a text message, skip to next handler
-        }
-    });
-
-    app.on_fetch(req, env, ctx).await.map_err(|e| e.into())
+    app.on_fetch(req, env, ctx).await
 }
 ```
 
 ## API Overview
 
-### Context Methods
+### Simple API (App methods)
+
+| Method | Description |
+|--------|-------------|
+| `app.command("cmd", \|bot, msg\|)` | Handle `/cmd` command |
+| `app.on_message(\|bot, msg\|)` | Handle all messages |
+| `app.on_callback_query(\|bot, query\|)` | Handle callback queries |
+| `app.run(req, env, ctx)` | Run the bot |
+
+### Bot Methods
+
+| Method | Description |
+|--------|-------------|
+| `bot.send_message(chat_id, text)` | Send a text message |
+| `bot.send_html(chat_id, text)` | Send HTML-formatted message |
+| `bot.reply(&msg, text)` | Reply to a message (quote) |
+| `bot.reply_html(&msg, text)` | Reply with HTML formatting |
+| `bot.answer_callback(id, text, alert)` | Answer callback query |
+| `bot.edit_message(chat_id, msg_id, text)` | Edit message text |
+| `bot.delete_message(chat_id, msg_id)` | Delete a message |
+| `bot.send_photo(chat_id, photo)` | Send a photo |
+
+### Message Accessors
+
+| Method | Description |
+|--------|-------------|
+| `msg.chat_id()` | Get chat ID |
+| `msg.message_id()` | Get message ID |
+| `msg.text()` | Get message text |
+| `msg.from()` | Get sender User |
+| `msg.command()` | Get command name (without `/`) |
+| `msg.command_args()` | Get command arguments |
+
+### CallbackQuery Accessors
+
+| Method | Description |
+|--------|-------------|
+| `query.id()` | Get callback query ID |
+| `query.data()` | Get callback data |
+| `query.from()` | Get user who clicked |
+| `query.chat_id()` | Get chat ID |
+| `query.message_id()` | Get message ID |
+
+### Context Methods (Session API)
 
 | Method | Description |
 |--------|-------------|
 | `ctx.reply(text)` | Send a text message |
-| `ctx.reply_html(text)` | Send HTML-formatted message |
-| `ctx.reply_to(text)` | Reply to the current message (quote) |
 | `ctx.reply_and_done(text)` | Reply and end handler |
 | `ctx.edit_text(text)` | Edit message text |
 | `ctx.delete_message()` | Delete the current message |
-| `ctx.answer_callback(text, show_alert)` | Answer callback query |
-| `ctx.send_photo(photo)` | Send a photo |
 | `Context::done()` | End handler processing |
 | `Context::skip()` | Skip to next handler |
-
-### Accessor Methods
-
-| Method | Description |
-|--------|-------------|
-| `ctx.chat_id()` | Get chat ID |
-| `ctx.user_id()` | Get user ID |
-| `ctx.message_id()` | Get message ID |
-| `ctx.text()` | Get message text |
-| `ctx.command()` | Get command name (without `/`) |
-| `ctx.command_args()` | Get command arguments |
-| `ctx.callback_data()` | Get callback query data |
-| `ctx.telegram_api()` | Get raw Telegram API client |
 
 ## Session Management
 
@@ -186,14 +239,14 @@ See the examples:
 
 ```bash
 # Install toolchain
-rustup toolchain install 1.89.0
-rustup target add wasm32-unknown-unknown --toolchain 1.89.0
+rustup toolchain install 1.91.1
+rustup target add wasm32-unknown-unknown --toolchain 1.91.1
 
 # Install Wrangler
 npm i -g wrangler
 
 # Run example locally
-cd examples/session
+cd examples/version
 wrangler secret put API_KEY  # Your Telegram bot token
 wrangler dev
 

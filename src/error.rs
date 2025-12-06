@@ -24,6 +24,11 @@ pub enum BotError {
     /// Custom error message
     #[error("{0}")]
     Custom(String),
+
+    /// Skip this handler and try the next one.
+    /// This is used internally to signal that a handler did not handle the update.
+    #[error("Skip")]
+    Skip,
 }
 
 impl From<frankenstein::Error> for BotError {

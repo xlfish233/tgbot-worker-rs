@@ -8,16 +8,20 @@ use std::rc::Rc;
 
 use worker::*;
 
+pub mod bot;
 pub mod cf;
 pub mod error;
 pub mod filter;
+pub mod message;
 #[cfg(feature = "queue")]
 pub mod queue;
 pub mod session;
 pub mod storage;
 
+pub use bot::Bot;
 pub use error::{BotError, BotResult};
 pub use filter::*;
+pub use message::{CallbackQuery, Message};
 
 // Core result alias to reduce verbosity
 pub type AppResult<T = ()> = Result<T>;
@@ -81,6 +85,158 @@ impl App {
     pub fn use_middleware(&mut self, mw: MiddlewareFn) {
         self.middlewares.push(mw);
     }
+
+    // =========================================================================
+    // Simplified API (teloxide-style)
+    // =========================================================================
+
+    /// Register a command handler (teloxide-style).
+    ///
+    /// # Example
+    /// ```ignore
+    /// app.command("start", |bot, msg| async move {
+    ///     bot.send_message(msg.chat_id(), "Welcome!").await
+    /// });
+    /// ```
+    pub fn command<F, Fut>(&mut self, cmd: &'static str, handler: F)
+    where
+        F: Fn(Bot, Message) -> Fut + 'static,
+        Fut: Future<Output = BotResult<()>> + 'static,
+    {
+        let cmd_str = if cmd.starts_with('/') {
+            cmd.to_string()
+        } else {
+            format!("/{}", cmd)
+        };
+        let handler = Rc::new(handler);
+        self.on_update_flow(Rc::new(move |update, env| {
+            let handler = handler.clone();
+            let cmd_str = cmd_str.clone();
+            async move {
+                // Check if this is a message with the target command
+                let msg = match &update.content {
+                    UpdateContent::Message(m) => {
+                        if let Some(text) = &m.text {
+                            if text.split_whitespace().next().unwrap_or("") == cmd_str {
+                                Some(Message::new((**m).clone()))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+
+                let Some(msg) = msg else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                let bot =
+                    Bot::from_env(&env).map_err(|e| worker::Error::RustError(e.to_string()))?;
+                match handler(bot, msg).await {
+                    Ok(()) => Ok(ControlFlow::Break(Response::ok("")?)),
+                    Err(BotError::Skip) => Ok(ControlFlow::Continue(())),
+                    Err(e) => Err(worker::Error::RustError(e.to_string())),
+                }
+            }
+            .boxed_local()
+        }));
+    }
+
+    /// Register a message handler (teloxide-style).
+    ///
+    /// Handles all messages (not just commands).
+    ///
+    /// # Example
+    /// ```ignore
+    /// app.on_message(|bot, msg| async move {
+    ///     bot.send_message(msg.chat_id(), "Got your message!").await
+    /// });
+    /// ```
+    pub fn on_message<F, Fut>(&mut self, handler: F)
+    where
+        F: Fn(Bot, Message) -> Fut + 'static,
+        Fut: Future<Output = BotResult<()>> + 'static,
+    {
+        let handler = Rc::new(handler);
+        self.on_update_flow(Rc::new(move |update, env| {
+            let handler = handler.clone();
+            async move {
+                let msg = match &update.content {
+                    UpdateContent::Message(m) => Some(Message::new((**m).clone())),
+                    _ => None,
+                };
+
+                let Some(msg) = msg else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                let bot =
+                    Bot::from_env(&env).map_err(|e| worker::Error::RustError(e.to_string()))?;
+                match handler(bot, msg).await {
+                    Ok(()) => Ok(ControlFlow::Break(Response::ok("")?)),
+                    Err(BotError::Skip) => Ok(ControlFlow::Continue(())),
+                    Err(e) => Err(worker::Error::RustError(e.to_string())),
+                }
+            }
+            .boxed_local()
+        }));
+    }
+
+    /// Register a callback query handler (teloxide-style).
+    ///
+    /// # Example
+    /// ```ignore
+    /// app.on_callback_query(|bot, query| async move {
+    ///     bot.answer_callback(query.id(), Some("Clicked!"), false).await
+    /// });
+    /// ```
+    pub fn on_callback_query<F, Fut>(&mut self, handler: F)
+    where
+        F: Fn(Bot, CallbackQuery) -> Fut + 'static,
+        Fut: Future<Output = BotResult<()>> + 'static,
+    {
+        let handler = Rc::new(handler);
+        self.on_update_flow(Rc::new(move |update, env| {
+            let handler = handler.clone();
+            async move {
+                let query = match &update.content {
+                    UpdateContent::CallbackQuery(q) => Some(CallbackQuery::new((**q).clone())),
+                    _ => None,
+                };
+
+                let Some(query) = query else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                let bot =
+                    Bot::from_env(&env).map_err(|e| worker::Error::RustError(e.to_string()))?;
+                match handler(bot, query).await {
+                    Ok(()) => Ok(ControlFlow::Break(Response::ok("")?)),
+                    Err(BotError::Skip) => Ok(ControlFlow::Continue(())),
+                    Err(e) => Err(worker::Error::RustError(e.to_string())),
+                }
+            }
+            .boxed_local()
+        }));
+    }
+
+    /// Run the bot (convenience method for `on_fetch`).
+    ///
+    /// # Example
+    /// ```ignore
+    /// app.run(req, env, ctx).await
+    /// ```
+    #[worker::send]
+    pub async fn run(self, req: Request, env: Env, ctx: Context) -> Result<Response> {
+        self.on_fetch(req, env, ctx).await
+    }
+
+    // =========================================================================
+    // Session-based API (for stateful handlers)
+    // =========================================================================
 
     /// Register a context-based handler with session support
     pub fn on_update_ctx<T, S, F, Fut>(&mut self, storage: S, f: F)
@@ -222,12 +378,17 @@ pub trait Plugin {
 
 // Lightweight prelude to make imports simpler for users
 pub mod prelude {
-    pub use crate::error::{BotError, BotResult};
-    pub use crate::filter;
-    pub use crate::frankenstein::updates::{Update, UpdateContent};
+    // Core types
+    pub use crate::{App, Bot, BotError, BotResult, CallbackQuery, Message};
+
+    // Session types (for stateful handlers)
     #[cfg(feature = "session")]
     pub use crate::session::DurableObjectStorage;
     pub use crate::session::{Context, KvStorage, Session, SessionStorage};
-    pub use crate::{App, AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler};
+
+    // Advanced types (for low-level usage)
+    pub use crate::{AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler};
+
+    // Re-exports
     pub use worker::{Env, Request, Response, Result};
 }
