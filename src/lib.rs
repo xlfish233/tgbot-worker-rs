@@ -29,7 +29,7 @@ pub use error::{BotError, BotResult};
 pub use filter::*;
 pub use keyboard::{InlineButton, InlineKeyboard, ReplyButton, ReplyKeyboard};
 pub use message::{CallbackQuery, Message};
-pub use retry::{RetryContext, RetryPolicy};
+pub use retry::{get_retry_after, is_retryable};
 
 // Core result alias to reduce verbosity
 pub type AppResult<T = ()> = Result<T>;
@@ -307,7 +307,7 @@ pub mod prelude {
     pub use crate::command::{CommandParser, ParseError as CommandParseError};
 
     // Retry utilities
-    pub use crate::retry::{RetryContext, RetryPolicy};
+    pub use crate::retry::{get_retry_after, is_retryable};
 
     // Session/storage types
     #[cfg(feature = "session")]

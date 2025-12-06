@@ -321,21 +321,19 @@ async fn handle_registration(
 
 ## Retry Utilities
 
-Handle rate limits and transient errors:
+Detect retryable errors and extract retry timing:
 
 ```rust
-use tgbot_worker_rs::prelude::*;
+use tgbot_worker_rs::retry::{is_retryable, get_retry_after};
 
-let policy = RetryPolicy::new(3, 1000)  // 3 retries, 1s base delay
-    .with_max_delay(30000);              // cap at 30s
-
-let mut ctx = RetryContext::new(policy);
-while ctx.can_retry() {
-    match bot.send_message(chat_id, "Hello").await {
-        Ok(_) => break,
-        Err(e) => {
-            ctx.record_failure(&e.to_string());
-            // In serverless: schedule retry via queue after ctx.next_delay_seconds()
+match bot.send_message(chat_id, "Hello").await {
+    Ok(_) => { /* success */ }
+    Err(e) => {
+        let err = e.to_string();
+        if is_retryable(&err) {
+            // Get Telegram's suggested delay (for 429 errors)
+            let delay = get_retry_after(&err).unwrap_or(30);
+            // Handle retry as needed
         }
     }
 }
