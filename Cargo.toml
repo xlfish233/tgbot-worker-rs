@@ -2,7 +2,7 @@
 
 [package]
 name = "tgbot-worker-rs"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.91"
 authors = ["xiaolin <446304319@qq.com>"]

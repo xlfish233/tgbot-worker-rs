@@ -9,7 +9,6 @@ use std::rc::Rc;
 use worker::*;
 
 pub mod bot;
-pub mod cf;
 pub mod command;
 pub mod dialogue;
 pub mod error;
@@ -84,8 +83,8 @@ impl App {
         worker_route(req, env, self.as_data()).await
     }
 
-    /// Register a flow-based handler directly
-    pub fn on_update_flow(&mut self, handler: UpdateHandler) {
+    /// Register a flow-based handler (internal use)
+    fn add_handler(&mut self, handler: UpdateHandler) {
         self.update_handlers.push(handler);
     }
 
@@ -117,7 +116,7 @@ impl App {
             format!("/{}", cmd)
         };
         let handler = Rc::new(handler);
-        self.on_update_flow(Rc::new(move |update, env| {
+        self.add_handler(Rc::new(move |update, env| {
             let handler = handler.clone();
             let cmd_str = cmd_str.clone();
             async move {
@@ -169,7 +168,7 @@ impl App {
         Fut: Future<Output = BotResult<()>> + 'static,
     {
         let handler = Rc::new(handler);
-        self.on_update_flow(Rc::new(move |update, env| {
+        self.add_handler(Rc::new(move |update, env| {
             let handler = handler.clone();
             async move {
                 let msg = match &update.content {
@@ -207,7 +206,7 @@ impl App {
         Fut: Future<Output = BotResult<()>> + 'static,
     {
         let handler = Rc::new(handler);
-        self.on_update_flow(Rc::new(move |update, env| {
+        self.add_handler(Rc::new(move |update, env| {
             let handler = handler.clone();
             async move {
                 let query = match &update.content {
@@ -240,89 +239,6 @@ impl App {
     #[worker::send]
     pub async fn run(self, req: Request, env: Env, ctx: Context) -> Result<Response> {
         self.on_fetch(req, env, ctx).await
-    }
-
-    // =========================================================================
-    // Session-based API (for stateful handlers)
-    // =========================================================================
-
-    /// Register a context-based handler with session support
-    pub fn on_update_ctx<T, S, F, Fut>(&mut self, storage: S, f: F)
-    where
-        T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone + 'static,
-        S: session::SessionStorage + 'static,
-        F: Fn(session::Context<T, S>) -> Fut + 'static,
-        Fut: Future<Output = BotResult<Flow>> + 'static,
-    {
-        let f = Rc::new(f);
-        self.on_update_flow(Rc::new(move |update, env| {
-            let f = f.clone();
-            let storage = storage.clone();
-            async move {
-                let chat_id = session::extract_chat_id(&update).unwrap_or(0);
-                let user_id = session::extract_user_id(&update);
-                let sess = session::Session::load(storage, chat_id, user_id)
-                    .await
-                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
-                let ctx = session::Context::new(update, env, sess);
-                let result = f(ctx.clone()).await.map_err(|e| e.into());
-                ctx.session
-                    .save(Some(3600))
-                    .await
-                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
-                result
-            }
-            .boxed_local()
-        }));
-    }
-
-    /// Register a context-based command handler with session support
-    pub fn on_command_ctx<T, S, F, Fut>(&mut self, command: &'static str, storage: S, f: F)
-    where
-        T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone + 'static,
-        S: session::SessionStorage + 'static,
-        F: Fn(session::Context<T, S>) -> Fut + 'static,
-        Fut: Future<Output = BotResult<Flow>> + 'static,
-    {
-        let cmd = if command.starts_with('/') {
-            command.to_string()
-        } else {
-            format!("/{}", command)
-        };
-        let f = Rc::new(f);
-        self.on_update_flow(Rc::new(move |update, env| {
-            let f = f.clone();
-            let storage = storage.clone();
-            let cmd = cmd.clone();
-            async move {
-                // Check if this is the target command
-                let is_match = match &update.content {
-                    UpdateContent::Message(m) => match &m.text {
-                        Some(text) => text.split_whitespace().next().unwrap_or("") == cmd,
-                        None => false,
-                    },
-                    _ => false,
-                };
-
-                if !is_match {
-                    return Ok(ControlFlow::Continue(()));
-                }
-
-                let chat_id = session::extract_chat_id(&update).unwrap_or(0);
-                let user_id = session::extract_user_id(&update);
-                let sess = session::Session::load(storage, chat_id, user_id)
-                    .await
-                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
-                let ctx = session::Context::new(update, env, sess);
-                let result = f(ctx.clone()).await.map_err(|e| e.into());
-                ctx.session
-                    .save(Some(3600))
-                    .await
-                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
-                result
-            }
-            .boxed_local()
-        }));
     }
 }
 
@@ -378,12 +294,6 @@ async fn telegram_message(mut req: Request, ctx: RouteContext<AppData>) -> Resul
     }
 }
 
-// Optional Plugin trait for ergonomic registration
-pub trait Plugin {
-    fn name(&self) -> &'static str;
-    fn setup(&self, app: &mut App);
-}
-
 // Lightweight prelude to make imports simpler for users
 pub mod prelude {
     // Core types
@@ -398,19 +308,16 @@ pub mod prelude {
     // Retry utilities
     pub use crate::retry::{RetryContext, RetryPolicy};
 
-    // Session types (for stateful handlers)
+    // Session/storage types
     #[cfg(feature = "session")]
     pub use crate::session::DurableObjectStorage;
-    pub use crate::session::{Context, KvStorage, Session, SessionStorage};
+    pub use crate::session::{KvStorage, Session, SessionStorage};
 
     // dptree-style handler system
     pub use crate::handler::{Handler, HandlerResult};
 
     // Dialogue/FSM system
     pub use crate::dialogue::Dialogue;
-
-    // Advanced types (for low-level usage)
-    pub use crate::{AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler};
 
     // Re-exports
     pub use worker::{Env, Request, Response, Result};

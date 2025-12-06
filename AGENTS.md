@@ -20,9 +20,9 @@
 
 Notice: Always use the `wasm32-unknown-unknown` target for builds and examples. Ensure the target is installed via `rustup target add wasm32-unknown-unknown`. Prefer running format/lint with the pinned toolchain (e.g., `cargo +1.91.1 fmt`, `cargo +1.91.1 clippy --all-targets -- -D warnings`). Avoid adding features or crates that require OS-level `std` functionality unavailable in Cloudflare Workers.
 
-## Preferred API Patterns (v0.3.0+)
+## Preferred API Patterns (v0.4.0+)
 
-### Teloxide-style Simple API
+### Teloxide-style Simple API (Recommended)
 ```rust
 // Simple command handler
 app.command("start", |bot, msg| async move {
@@ -33,9 +33,14 @@ app.command("start", |bot, msg| async move {
 app.on_message(|bot, msg| async move {
     bot.reply(&msg, "Got it!").await
 });
+
+// Callback query handler
+app.on_callback_query(|bot, query| async move {
+    bot.answer_callback(query.id(), Some("Clicked!"), false).await
+});
 ```
 
-### dptree-style Handler Composition
+### dptree-style Handler Composition (Advanced)
 ```rust
 use tgbot_worker_rs::dptree;
 
@@ -48,22 +53,6 @@ let handler = dptree::entry()
 // - Continue → proceed to next in chain
 // - Skip → try next branch  
 // - Break(Response) → stop processing
-```
-
-### Session/Context API
-```rust
-// Context-based handler with session support
-app.on_command_ctx::<MyState, _, _, _>("start", storage, |ctx| async move {
-    ctx.reply_and_done("Hello!").await
-});
-
-// Use Context::done() and Context::skip() for clean returns
-app.on_update_ctx::<MyState, _, _, _>(storage, |ctx| async move {
-    if ctx.text().is_none() {
-        return Ctx::skip();  // Skip to next handler
-    }
-    ctx.reply_and_done("Got text!").await
-});
 ```
 
 ### Dialogue/FSM for Multi-step Flows

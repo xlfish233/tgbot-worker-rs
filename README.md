@@ -2,7 +2,7 @@
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-WTFPL-blue)
-![Version](https://img.shields.io/badge/version-0.3.0-orange)
+![Version](https://img.shields.io/badge/version-0.4.0-orange)
 
 A lightweight, serverless Telegram bot framework for Cloudflare Workers, built with Rust.
 
@@ -14,7 +14,6 @@ A lightweight, serverless Telegram bot framework for Cloudflare Workers, built w
 - [Roadmap](#roadmap)
 - [Quick Start](#quick-start)
 - [API Overview](#api-overview)
-- [Session Management](#session-management)
 - [Filter Combinators](#filter-combinators)
 - [Keyboard Builder](#keyboard-builder)
 - [Command Parsing](#command-parsing)
@@ -100,34 +99,6 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 }
 ```
 
-### Session API (for stateful handlers)
-
-```rust
-use serde::{Deserialize, Serialize};
-use tgbot_worker_rs::prelude::*;
-use worker::*;
-
-#[derive(Default, Clone, Serialize, Deserialize)]
-struct MyState { counter: u32 }
-
-type Ctx = Context<MyState, KvStorage>;
-
-#[event(fetch)]
-pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Response> {
-    let mut app = App::new();
-    let storage = KvStorage::from_env(&env, "SESSION_KV", "session")?;
-
-    app.on_command_ctx::<MyState, _, _, _>("count", storage, |ctx| async move {
-        let mut state = ctx.session.get();
-        state.counter += 1;
-        ctx.session.set(state.clone());
-        ctx.reply_and_done(&format!("Count: {}", state.counter)).await
-    });
-
-    app.on_fetch(req, env, ctx).await
-}
-```
-
 ## API Overview
 
 ### Simple API (App methods)
@@ -172,42 +143,6 @@ pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Respo
 | `query.from()` | Get user who clicked |
 | `query.chat_id()` | Get chat ID |
 | `query.message_id()` | Get message ID |
-
-### Context Methods (Session API)
-
-| Method | Description |
-|--------|-------------|
-| `ctx.reply(text)` | Send a text message |
-| `ctx.reply_and_done(text)` | Reply and end handler |
-| `ctx.edit_text(text)` | Edit message text |
-| `ctx.delete_message()` | Delete the current message |
-| `Context::done()` | End handler processing |
-| `Context::skip()` | Skip to next handler |
-
-## Session Management
-
-Sessions are automatically loaded and saved per chat. Use KV storage for persistence:
-
-```rust
-// Define your state type
-#[derive(Default, Clone, Serialize, Deserialize)]
-struct UserState {
-    step: String,
-    data: Option<String>,
-}
-
-// Create storage from KV binding
-let storage = KvStorage::from_env(&env, "SESSION_KV", "prefix")?;
-
-// Access session in handler
-app.on_command_ctx::<UserState, _, _, _>("start", storage, |ctx| async move {
-    ctx.session.set(UserState {
-        step: "awaiting_input".into(),
-        data: None,
-    });
-    ctx.reply_and_done("Please enter your name:").await
-});
-```
 
 ## Filter Combinators
 
