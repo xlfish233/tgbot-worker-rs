@@ -40,9 +40,9 @@
 
 | 优先级 | 功能 | 描述 | 状态 |
 |--------|------|------|------|
-| **高** | 键盘构建器 | 类型安全的内联/回复键盘构建 API | 🔲 待开发 |
-| **高** | 命令参数解析 | 结构化解析：`/remind 30m "文本"` → `(Duration, String)` | 🔲 待开发 |
-| **高** | 速率限制 | 自动重试 + 指数退避 + flood wait 处理 | 🔲 待开发 |
+| **高** | 键盘构建器 | 类型安全的内联/回复键盘构建 API | ✅ 已完成 |
+| **高** | 命令参数解析 | 结构化解析：`/remind 30m "文本"` → `(Duration, String)` | ✅ 已完成 |
+| **高** | 速率限制 | 自动重试 + 指数退避 + flood wait 处理 | ✅ 已完成 |
 | **中** | Guard 中间件 | `only_admin()`、`only_private()`、`only_group()` 权限守卫 | 🔲 待开发 |
 | **中** | 对话/向导 | 支持分支逻辑的多步对话流程 | 🔲 待开发 |
 | **中** | 菜单系统 | 支持分页的交互式内联按钮菜单 | 🔲 待开发 |
@@ -227,6 +227,77 @@ or(is_message, is_callback_query)  // 任一条件满足
 not(is_command)               // 取反过滤器
 ```
 
+## 键盘构建器
+
+使用流式 API 构建内联和回复键盘：
+
+```rust
+use tgbot_worker_rs::prelude::*;
+
+// 内联键盘（消息下方的按钮）
+let keyboard = InlineKeyboard::new()
+    .row([
+        InlineButton::callback("是", "yes"),
+        InlineButton::callback("否", "no"),
+    ])
+    .button(InlineButton::url("访问", "https://example.com"));
+
+bot.send_inline_keyboard(chat_id, "请选择：", keyboard).await?;
+
+// 回复键盘（替换默认键盘的自定义键盘）
+let keyboard = ReplyKeyboard::new()
+    .text("选项 1")
+    .text("选项 2")
+    .resize()
+    .one_time();
+
+bot.send_reply_keyboard(chat_id, "选择：", keyboard).await?;
+```
+
+## 命令解析
+
+类型安全地解析命令参数：
+
+```rust
+use tgbot_worker_rs::prelude::*;
+
+// 解析 "/ban 123 1h 垃圾信息"
+let parser = CommandParser::new(msg.text().unwrap_or(""));
+if parser.is_command("ban") {
+    let user_id: u64 = parser.arg(0)?;      // 123
+    let duration: String = parser.arg(1)?;   // "1h"
+    let reason = parser.rest(2);             // Some("垃圾信息")
+}
+
+// 解析时长字符串
+use tgbot_worker_rs::command::parse_duration;
+let seconds = parse_duration("30m")?;  // 1800
+let seconds = parse_duration("1h")?;   // 3600
+let seconds = parse_duration("1d")?;   // 86400
+```
+
+## 重试工具
+
+处理速率限制和瞬时错误：
+
+```rust
+use tgbot_worker_rs::prelude::*;
+
+let policy = RetryPolicy::new(3, 1000)  // 3 次重试，1 秒基础延迟
+    .with_max_delay(30000);              // 最大 30 秒
+
+let mut ctx = RetryContext::new(policy);
+while ctx.can_retry() {
+    match bot.send_message(chat_id, "你好").await {
+        Ok(_) => break,
+        Err(e) => {
+            ctx.record_failure(&e.to_string());
+            // 在 serverless 中：通过队列在 ctx.next_delay_seconds() 后调度重试
+        }
+    }
+}
+```
+
 ## 示例
 
 请参考以下示例：
@@ -269,6 +340,12 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=<WORKER_URL>/telegramMe
 ### 代码审查流程
 
 为确保代码质量，所有贡献将由维护者进行审查。请在此过程中保持耐心。
+
+## 致谢
+
+本项目深受 [teloxide](https://github.com/teloxide/teloxide) 的启发，这是一个优雅的 Rust Telegram 机器人框架。许多 API 设计，包括简化的处理器签名、键盘构建器和命令解析模式，都参考了 teloxide 的优秀架构。
+
+特别感谢 teloxide 团队创建了如此精心设计的框架，为 Rust Telegram 机器人生态系统提供了参考。
 
 ## 许可证
 

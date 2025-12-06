@@ -10,18 +10,24 @@ use worker::*;
 
 pub mod bot;
 pub mod cf;
+pub mod command;
 pub mod error;
 pub mod filter;
+pub mod keyboard;
 pub mod message;
 #[cfg(feature = "queue")]
 pub mod queue;
+pub mod retry;
 pub mod session;
 pub mod storage;
 
 pub use bot::Bot;
+pub use command::{CommandParser, ParseError as CommandParseError};
 pub use error::{BotError, BotResult};
 pub use filter::*;
+pub use keyboard::{InlineButton, InlineKeyboard, ReplyButton, ReplyKeyboard};
 pub use message::{CallbackQuery, Message};
+pub use retry::{RetryContext, RetryPolicy};
 
 // Core result alias to reduce verbosity
 pub type AppResult<T = ()> = Result<T>;
@@ -380,6 +386,15 @@ pub trait Plugin {
 pub mod prelude {
     // Core types
     pub use crate::{App, Bot, BotError, BotResult, CallbackQuery, Message};
+
+    // Keyboard types
+    pub use crate::keyboard::{InlineButton, InlineKeyboard, ReplyButton, ReplyKeyboard};
+
+    // Command parsing
+    pub use crate::command::{CommandParser, ParseError as CommandParseError};
+
+    // Retry utilities
+    pub use crate::retry::{RetryContext, RetryPolicy};
 
     // Session types (for stateful handlers)
     #[cfg(feature = "session")]

@@ -8,11 +8,14 @@ use frankenstein::methods::{
     AnswerCallbackQueryParams, DeleteMessageParams, EditMessageTextParams, SendMessageParams,
     SendPhotoParams,
 };
-use frankenstein::types::ReplyParameters;
+use frankenstein::types::{
+    InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyMarkup, ReplyParameters,
+};
 use frankenstein::{AsyncTelegramApi, ParseMode};
 use worker::Env;
 
 use crate::error::{BotError, BotResult};
+use crate::keyboard::{InlineKeyboard, ReplyKeyboard};
 use crate::message::Message;
 
 /// Simplified Bot wrapper that hides frankenstein complexity.
@@ -150,5 +153,88 @@ impl Bot {
             .build();
         self.api.send_photo(&params).await?;
         Ok(())
+    }
+
+    // =========================================================================
+    // Keyboard methods
+    // =========================================================================
+
+    /// Send a message with an inline keyboard.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let keyboard = InlineKeyboard::new()
+    ///     .row([InlineButton::callback("Yes", "yes"), InlineButton::callback("No", "no")]);
+    /// bot.send_with_keyboard(chat_id, "Choose:", keyboard).await?;
+    /// ```
+    pub async fn send_with_keyboard(
+        &self,
+        chat_id: i64,
+        text: &str,
+        keyboard: impl Into<InlineKeyboardMarkup>,
+    ) -> BotResult<()> {
+        let params = SendMessageParams::builder()
+            .chat_id(chat_id)
+            .text(text)
+            .reply_markup(ReplyMarkup::InlineKeyboardMarkup(keyboard.into()))
+            .build();
+        self.api.send_message(&params).await?;
+        Ok(())
+    }
+
+    /// Send a message with a reply keyboard.
+    pub async fn send_with_reply_keyboard(
+        &self,
+        chat_id: i64,
+        text: &str,
+        keyboard: impl Into<ReplyKeyboardMarkup>,
+    ) -> BotResult<()> {
+        let params = SendMessageParams::builder()
+            .chat_id(chat_id)
+            .text(text)
+            .reply_markup(ReplyMarkup::ReplyKeyboardMarkup(keyboard.into()))
+            .build();
+        self.api.send_message(&params).await?;
+        Ok(())
+    }
+
+    /// Edit a message with a new inline keyboard.
+    pub async fn edit_with_keyboard(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        text: &str,
+        keyboard: impl Into<InlineKeyboardMarkup>,
+    ) -> BotResult<()> {
+        let params = EditMessageTextParams::builder()
+            .chat_id(chat_id)
+            .message_id(message_id)
+            .text(text)
+            .reply_markup(keyboard.into())
+            .build();
+        self.api.edit_message_text(&params).await?;
+        Ok(())
+    }
+
+    /// Convenience: send with InlineKeyboard builder.
+    pub async fn send_inline_keyboard(
+        &self,
+        chat_id: i64,
+        text: &str,
+        keyboard: InlineKeyboard,
+    ) -> BotResult<()> {
+        self.send_with_keyboard(chat_id, text, keyboard.build())
+            .await
+    }
+
+    /// Convenience: send with ReplyKeyboard builder.
+    pub async fn send_reply_keyboard(
+        &self,
+        chat_id: i64,
+        text: &str,
+        keyboard: ReplyKeyboard,
+    ) -> BotResult<()> {
+        self.send_with_reply_keyboard(chat_id, text, keyboard.build())
+            .await
     }
 }

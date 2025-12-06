@@ -40,9 +40,9 @@ Planned features and improvements (contributions welcome!):
 
 | Priority | Feature | Description | Status |
 |----------|---------|-------------|--------|
-| **High** | Keyboard Builder | Type-safe inline/reply keyboard construction API | 🔲 TODO |
-| **High** | Command Argument Parsing | Structured parsing: `/remind 30m "text"` → `(Duration, String)` | 🔲 TODO |
-| **High** | Rate Limiting | Auto-retry with exponential backoff, flood wait handling | 🔲 TODO |
+| **High** | Keyboard Builder | Type-safe inline/reply keyboard construction API | ✅ Done |
+| **High** | Command Argument Parsing | Structured parsing: `/remind 30m "text"` → `(Duration, String)` | ✅ Done |
+| **High** | Rate Limiting | Auto-retry with exponential backoff, flood wait handling | ✅ Done |
 | **Medium** | Guard Middleware | `only_admin()`, `only_private()`, `only_group()` permission guards | 🔲 TODO |
 | **Medium** | Conversation/Wizard | Multi-step conversation flows with branching logic | 🔲 TODO |
 | **Medium** | Menu System | Interactive inline button menus with pagination | 🔲 TODO |
@@ -227,6 +227,77 @@ or(is_message, is_callback_query)  // Either condition
 not(is_command)               // Negate filter
 ```
 
+## Keyboard Builder
+
+Build inline and reply keyboards with a fluent API:
+
+```rust
+use tgbot_worker_rs::prelude::*;
+
+// Inline keyboard (buttons below message)
+let keyboard = InlineKeyboard::new()
+    .row([
+        InlineButton::callback("Yes", "yes"),
+        InlineButton::callback("No", "no"),
+    ])
+    .button(InlineButton::url("Visit", "https://example.com"));
+
+bot.send_inline_keyboard(chat_id, "Choose an option:", keyboard).await?;
+
+// Reply keyboard (custom keyboard replacing default)
+let keyboard = ReplyKeyboard::new()
+    .text("Option 1")
+    .text("Option 2")
+    .resize()
+    .one_time();
+
+bot.send_reply_keyboard(chat_id, "Select:", keyboard).await?;
+```
+
+## Command Parsing
+
+Parse command arguments with type safety:
+
+```rust
+use tgbot_worker_rs::prelude::*;
+
+// Parse "/ban 123 1h spam reason"
+let parser = CommandParser::new(msg.text().unwrap_or(""));
+if parser.is_command("ban") {
+    let user_id: u64 = parser.arg(0)?;      // 123
+    let duration: String = parser.arg(1)?;   // "1h"
+    let reason = parser.rest(2);             // Some("spam reason")
+}
+
+// Parse duration strings
+use tgbot_worker_rs::command::parse_duration;
+let seconds = parse_duration("30m")?;  // 1800
+let seconds = parse_duration("1h")?;   // 3600
+let seconds = parse_duration("1d")?;   // 86400
+```
+
+## Retry Utilities
+
+Handle rate limits and transient errors:
+
+```rust
+use tgbot_worker_rs::prelude::*;
+
+let policy = RetryPolicy::new(3, 1000)  // 3 retries, 1s base delay
+    .with_max_delay(30000);              // cap at 30s
+
+let mut ctx = RetryContext::new(policy);
+while ctx.can_retry() {
+    match bot.send_message(chat_id, "Hello").await {
+        Ok(_) => break,
+        Err(e) => {
+            ctx.record_failure(&e.to_string());
+            // In serverless: schedule retry via queue after ctx.next_delay_seconds()
+        }
+    }
+}
+```
+
 ## Examples
 
 See the examples:
@@ -271,6 +342,12 @@ follow these steps:
 
 To ensure code quality, all contributions will be reviewed by the maintainers.
 Please be patient during this process.
+
+## Acknowledgements
+
+This project is heavily inspired by [teloxide](https://github.com/teloxide/teloxide), an elegant Telegram bot framework for Rust. Many API designs, including the simplified handler signatures, keyboard builders, and command parsing patterns, are adapted from teloxide's excellent architecture.
+
+Special thanks to the teloxide team for creating such a well-designed framework that serves as a reference for the Rust Telegram bot ecosystem.
 
 ## License
 
