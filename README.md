@@ -123,6 +123,23 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 | `bot.delete_message(chat_id, msg_id)` | Delete a message |
 | `bot.send_photo(chat_id, photo)` | Send a photo |
 
+### Admin Methods
+
+| Method | Description |
+|--------|-------------|
+| `bot.ban_chat_member(chat_id, user_id, until_date, revoke)` | Ban a user |
+| `bot.unban_chat_member(chat_id, user_id, only_if_banned)` | Unban a user |
+| `bot.kick_chat_member(chat_id, user_id)` | Kick (ban + unban) |
+| `bot.mute_chat_member(chat_id, user_id, until_date)` | Mute a user |
+| `bot.unmute_chat_member(chat_id, user_id)` | Unmute a user |
+| `bot.restrict_chat_member(chat_id, user_id, perms, until)` | Restrict permissions |
+| `bot.promote_chat_member(chat_id, user_id, rights)` | Promote to admin |
+| `bot.pin_message(chat_id, msg_id, silent)` | Pin a message |
+| `bot.unpin_message(chat_id, msg_id)` | Unpin a message |
+| `bot.unpin_all_messages(chat_id)` | Unpin all messages |
+| `bot.set_chat_title(chat_id, title)` | Set chat title |
+| `bot.set_chat_description(chat_id, desc)` | Set chat description |
+
 ### Message Accessors
 
 | Method | Description |

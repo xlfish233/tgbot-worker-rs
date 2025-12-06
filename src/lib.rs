@@ -22,8 +22,9 @@ pub mod retry;
 pub mod session;
 pub mod storage;
 
-pub use bot::Bot;
+pub use bot::{AdminRights, Bot};
 pub use command::{CommandParser, ParseError as CommandParseError};
+pub use frankenstein::types::ChatPermissions;
 pub use error::{BotError, BotResult};
 pub use filter::*;
 pub use keyboard::{InlineButton, InlineKeyboard, ReplyButton, ReplyKeyboard};
