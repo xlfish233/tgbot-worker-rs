@@ -5,8 +5,13 @@
 - Key modules:
   - `src/error.rs` - `BotError` enum and `BotResult<T>` type alias
   - `src/filter.rs` - Filter combinators (`is_message`, `text_contains`, `and`, `or`, `not`, etc.)
+  - `src/handler/` - dptree-style handler composition (`Handler`, `filter`, `endpoint`, `chain`, `branch`)
+  - `src/dialogue/` - FSM/Dialogue system for multi-step conversations (`Dialogue<S, St>`)
   - `src/session/` - Session management with `Context<T, S>`, `KvStorage`, `SessionStorage` trait
   - `src/storage/` - KV and D1 storage helpers
+  - `src/keyboard.rs` - Keyboard builders (`InlineKeyboard`, `ReplyKeyboard`)
+  - `src/command.rs` - Command parsing utilities (`CommandParser`, `parse_duration`)
+  - `src/retry.rs` - Retry utilities (`RetryPolicy`, `RetryContext`)
 - Runnable Workers live under `examples/<name>/` with their own `Cargo.toml` and `wrangler.toml`:
   - `examples/version/` - KV, D1, Queues integration
   - `examples/middleware/` - Middleware usage
@@ -16,9 +21,38 @@
 Notice: Always use the `wasm32-unknown-unknown` target for builds and examples. Ensure the target is installed via `rustup target add wasm32-unknown-unknown`. Prefer running format/lint with the pinned toolchain (e.g., `cargo +1.91.1 fmt`, `cargo +1.91.1 clippy --all-targets -- -D warnings`). Avoid adding features or crates that require OS-level `std` functionality unavailable in Cloudflare Workers.
 
 ## Preferred API Patterns (v0.3.0+)
-Use context-based handlers with session support:
+
+### Teloxide-style Simple API
 ```rust
-// Preferred: on_command_ctx / on_update_ctx with Context<T, S>
+// Simple command handler
+app.command("start", |bot, msg| async move {
+    bot.send_message(msg.chat_id(), "Hello!").await
+});
+
+// Message handler
+app.on_message(|bot, msg| async move {
+    bot.reply(&msg, "Got it!").await
+});
+```
+
+### dptree-style Handler Composition
+```rust
+use tgbot_worker_rs::dptree;
+
+let handler = dptree::entry()
+    .branch(dptree::filter_command("start").chain(dptree::endpoint(handle_start)))
+    .branch(dptree::endpoint_callback(handle_callback))
+    .branch(dptree::endpoint(handle_fallback));
+
+// Handler control flow:
+// - Continue → proceed to next in chain
+// - Skip → try next branch  
+// - Break(Response) → stop processing
+```
+
+### Session/Context API
+```rust
+// Context-based handler with session support
 app.on_command_ctx::<MyState, _, _, _>("start", storage, |ctx| async move {
     ctx.reply_and_done("Hello!").await
 });
@@ -28,8 +62,18 @@ app.on_update_ctx::<MyState, _, _, _>(storage, |ctx| async move {
     if ctx.text().is_none() {
         return Ctx::skip();  // Skip to next handler
     }
-    ctx.reply_and_done("Got text!").await  // Reply and finish
+    ctx.reply_and_done("Got text!").await
 });
+```
+
+### Dialogue/FSM for Multi-step Flows
+```rust
+use tgbot_worker_rs::dialogue::Dialogue;
+
+let dialogue = Dialogue::<MyState, KvStorage>::new(storage, chat_id);
+dialogue.load().await.ok();
+dialogue.update(MyState::NextStep);
+dialogue.save().await.ok();
 ```
 
 ## Build, Test, and Development Commands

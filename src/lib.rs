@@ -11,8 +11,10 @@ use worker::*;
 pub mod bot;
 pub mod cf;
 pub mod command;
+pub mod dialogue;
 pub mod error;
 pub mod filter;
+pub mod handler;
 pub mod keyboard;
 pub mod message;
 #[cfg(feature = "queue")]
@@ -401,9 +403,31 @@ pub mod prelude {
     pub use crate::session::DurableObjectStorage;
     pub use crate::session::{Context, KvStorage, Session, SessionStorage};
 
+    // dptree-style handler system
+    pub use crate::handler::{Handler, HandlerResult};
+
+    // Dialogue/FSM system
+    pub use crate::dialogue::Dialogue;
+
     // Advanced types (for low-level usage)
     pub use crate::{AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler};
 
     // Re-exports
     pub use worker::{Env, Request, Response, Result};
+}
+
+/// dptree-style handler module.
+///
+/// Provides composable handler chains inspired by teloxide's dptree.
+///
+/// # Example
+/// ```ignore
+/// use tgbot_worker_rs::dptree;
+///
+/// let handler = dptree::entry()
+///     .branch(dptree::filter_command("start").chain(dptree::endpoint(handle_start)))
+///     .branch(dptree::endpoint(handle_fallback));
+/// ```
+pub mod dptree {
+    pub use crate::handler::prelude::*;
 }

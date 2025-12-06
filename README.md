@@ -16,6 +16,11 @@ A lightweight, serverless Telegram bot framework for Cloudflare Workers, built w
 - [API Overview](#api-overview)
 - [Session Management](#session-management)
 - [Filter Combinators](#filter-combinators)
+- [Keyboard Builder](#keyboard-builder)
+- [Command Parsing](#command-parsing)
+- [dptree-style Handler](#dptree-style-handler)
+- [Dialogue/FSM System](#dialoguefsm-system)
+- [Retry Utilities](#retry-utilities)
 - [Examples](#examples)
 - [Contributing](#contributing)
 - [License](#license)
@@ -43,8 +48,9 @@ Planned features and improvements (contributions welcome!):
 | **High** | Keyboard Builder | Type-safe inline/reply keyboard construction API | ✅ Done |
 | **High** | Command Argument Parsing | Structured parsing: `/remind 30m "text"` → `(Duration, String)` | ✅ Done |
 | **High** | Rate Limiting | Auto-retry with exponential backoff, flood wait handling | ✅ Done |
+| **High** | dptree Handler | Composable handler chains inspired by teloxide's dptree | ✅ Done |
+| **High** | Dialogue/FSM | Multi-step conversation flows with state persistence | ✅ Done |
 | **Medium** | Guard Middleware | `only_admin()`, `only_private()`, `only_group()` permission guards | 🔲 TODO |
-| **Medium** | Conversation/Wizard | Multi-step conversation flows with branching logic | 🔲 TODO |
 | **Medium** | Menu System | Interactive inline button menus with pagination | 🔲 TODO |
 | **Medium** | Ignore Old Updates | Skip stale updates older than N seconds | 🔲 TODO |
 | **Low** | I18n Support | Internationalization/localization helpers | 🔲 TODO |
@@ -274,6 +280,91 @@ use tgbot_worker_rs::command::parse_duration;
 let seconds = parse_duration("30m")?;  // 1800
 let seconds = parse_duration("1h")?;   // 3600
 let seconds = parse_duration("1d")?;   // 86400
+```
+
+## dptree-style Handler
+
+Build composable handler chains inspired by [teloxide's dptree](https://github.com/teloxide/dptree):
+
+```rust
+use tgbot_worker_rs::dptree;
+
+// Compose handlers with chain() and branch()
+let handler = dptree::entry()
+    // Try /start command first
+    .branch(
+        dptree::filter_command("start")
+            .chain(dptree::endpoint(handle_start))
+    )
+    // Try /help command
+    .branch(
+        dptree::filter_command("help")
+            .chain(dptree::endpoint(handle_help))
+    )
+    // Handle callback queries
+    .branch(
+        dptree::filter(|upd| matches!(upd.content, UpdateContent::CallbackQuery(_)))
+            .chain(dptree::endpoint_callback(handle_callback))
+    )
+    // Fallback for other messages
+    .branch(dptree::endpoint(handle_fallback));
+
+async fn handle_start(bot: Bot, msg: Message) -> BotResult<()> {
+    bot.send_message(msg.chat_id(), "Welcome!").await
+}
+```
+
+Handler control flow:
+- `Continue` → proceed to next handler in chain
+- `Skip` → try next branch
+- `Break(Response)` → stop processing
+
+## Dialogue/FSM System
+
+Build multi-step conversation flows with state persistence:
+
+```rust
+use tgbot_worker_rs::dialogue::Dialogue;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+enum RegState {
+    #[default]
+    Start,
+    AwaitingName,
+    AwaitingEmail { name: String },
+}
+
+async fn handle_registration(
+    bot: Bot,
+    msg: Message,
+    dialogue: Dialogue<RegState, KvStorage>,
+) -> BotResult<()> {
+    // Load state from storage
+    dialogue.load().await.ok();
+
+    match dialogue.get() {
+        RegState::Start => {
+            bot.send_message(msg.chat_id(), "What's your name?").await?;
+            dialogue.update(RegState::AwaitingName);
+        }
+        RegState::AwaitingName => {
+            let name = msg.text().unwrap_or("").to_string();
+            bot.send_message(msg.chat_id(), "What's your email?").await?;
+            dialogue.update(RegState::AwaitingEmail { name });
+        }
+        RegState::AwaitingEmail { name } => {
+            let email = msg.text().unwrap_or("");
+            bot.send_message(
+                msg.chat_id(),
+                &format!("Done! {} <{}>", name, email)
+            ).await?;
+            dialogue.exit().await.ok();
+        }
+    }
+    dialogue.save().await.ok();
+    Ok(())
+}
 ```
 
 ## Retry Utilities
