@@ -2,10 +2,41 @@
 
 ## Project Structure & Module Organization
 - Core library in `src/lib.rs` exposes `App` and routes: `GET /` health and `POST /telegramMessage` (delegates to your update handler).
-- Runnable Workers live under `examples/<name>/` (see `examples/version/`) with their own `Cargo.toml` and `wrangler.toml`.
+- Key modules:
+  - `src/error.rs` - `BotError` enum and `BotResult<T>` type alias
+  - `src/filter.rs` - Filter combinators (`is_message`, `text_contains`, `and`, `or`, `not`, etc.)
+  - `src/session/` - Session management with `Context<T, S>`, `KvStorage`, `SessionStorage` trait
+  - `src/storage/` - KV and D1 storage helpers
+- Runnable Workers live under `examples/<name>/` with their own `Cargo.toml` and `wrangler.toml`:
+  - `examples/version/` - KV, D1, Queues integration
+  - `examples/middleware/` - Middleware usage
+  - `examples/session/` - Multi-step registration flow with session state
 - Tooling: `.cargo/config.toml` pins target `wasm32-unknown-unknown`; top‑level `wrangler.toml` defines build/publish settings.
 
 Notice: Always use the `wasm32-unknown-unknown` target for builds and examples. Ensure the target is installed via `rustup target add wasm32-unknown-unknown`. Prefer running format/lint with the pinned toolchain (e.g., `cargo +1.89.0 fmt`, `cargo +1.89.0 clippy --all-targets -- -D warnings`). Avoid adding features or crates that require OS-level `std` functionality unavailable in Cloudflare Workers.
+
+## Preferred API Patterns (v0.3.0+)
+Use context-based handlers with session support:
+```rust
+// Preferred: on_command_ctx / on_update_ctx with Context<T, S>
+app.on_command_ctx::<MyState, _, _, _>("start", storage, |ctx| async move {
+    ctx.reply_and_done("Hello!").await
+});
+
+// Use Context::done() and Context::skip() for clean returns
+app.on_update_ctx::<MyState, _, _, _>(storage, |ctx| async move {
+    if ctx.text().is_none() {
+        return Ctx::skip();  // Skip to next handler
+    }
+    ctx.reply_and_done("Got text!").await  // Reply and finish
+});
+```
+
+Deprecated APIs (avoid in new code):
+- `on_update()` → use `on_update_ctx()`
+- `on_command()` → use `on_command_ctx()`
+- `on_update_async()` → use `on_update_ctx()`
+- `on_update_when()` → use `on_update_ctx()` with filter module
 
 ## Build, Test, and Development Commands
 - Install target: `rustup target add wasm32-unknown-unknown`.
@@ -16,7 +47,7 @@ Notice: Always use the `wasm32-unknown-unknown` target for builds and examples. 
 - Secrets: `wrangler secret put API_KEY` (Telegram bot token; required by examples).
 
 ## Coding Style & Naming Conventions
-- Rust 2021 edition; 4‑space indentation; always run `cargo fmt`.
+- Rust 2024 edition; 4‑space indentation; always run `cargo fmt`.
 - Naming: snake_case (functions/vars/modules), PascalCase (types/traits), SCREAMING_SNAKE_CASE (consts).
 - Keep public surface minimal; group related logic into small modules; prefer pure functions for testability.
 

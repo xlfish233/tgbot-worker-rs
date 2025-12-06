@@ -16,11 +16,11 @@ wasm-opt = false
 crate-type = ["cdylib"]
 
 [dependencies]
-worker = { version = "0.6.1", features = ["http", "d1", "queue"] }
-worker-macros = { version = "0.6.1", features = ["http"] }
+worker = { version = "0.7", features = ["http", "d1", "queue"] }
+worker-macros = { version = "0.7", features = ["http"] }
 console_error_panic_hook = { version = "0.1.7" }
-serde = "1.0.210"
-serde_json = "1.0.131"  # Added serde_json dependency
+serde = "1"
+serde_json = "1"
 
 tgbot-worker-rs = { path = "../.." }
-futures-util = "0.3.31"
+futures-util = "0.3"

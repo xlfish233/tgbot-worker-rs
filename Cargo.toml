@@ -2,7 +2,7 @@
 
 [package]
 name = "tgbot-worker-rs"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.89"
 authors = ["xiaolin <446304319@qq.com>"]
@@ -19,13 +19,12 @@ name = "tgbot_worker_rs"
 path = "src/lib.rs"
 
 [dependencies]
-
-
 console_error_panic_hook = { version = "0.1.7" }
 frankenstein = { version = "0", features = ["async-http-client"], default-features = false }
-worker = { version = "0.6.1", features = ["http", "d1", "queue"] }
-futures-util = "0.3.31"
+worker = { version = "0.7", features = ["http", "d1", "queue"] }
+futures-util = "0.3"
 async-trait = "0.1"
+thiserror = "2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

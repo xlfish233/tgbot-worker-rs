@@ -9,10 +9,15 @@ use std::rc::Rc;
 use worker::*;
 
 pub mod cf;
+pub mod error;
+pub mod filter;
 #[cfg(feature = "queue")]
 pub mod queue;
 pub mod session;
 pub mod storage;
+
+pub use error::{BotError, BotResult};
+pub use filter::*;
 
 // Core result alias to reduce verbosity
 pub type AppResult<T = ()> = Result<T>;
@@ -75,7 +80,9 @@ impl App {
         worker_route(req, env, self.as_data()).await
     }
     // Note: raw request handler and manual env setter were removed in 0.2.0
-    // Register a plugin-style update handler (legacy Option-based output)
+
+    /// Register a plugin-style update handler (legacy Option-based output)
+    #[deprecated(since = "0.3.0", note = "Use on_update_ctx or on_update_flow instead")]
     pub fn on_update(&mut self, handler: UpdateHandlerFn) {
         let wrapped: UpdateHandler = Rc::new(move |u, e| {
             let h = handler.clone();
@@ -100,7 +107,9 @@ impl App {
         self.middlewares.push(mw);
     }
 
-    // Ergonomic helper: register an async closure/function without manual boxing
+    /// Ergonomic helper: register an async closure/function without manual boxing
+    #[deprecated(since = "0.3.0", note = "Use on_update_ctx instead")]
+    #[allow(deprecated)]
     pub fn on_update_async<F, Fut>(&mut self, f: F)
     where
         F: Fn(Update, Env) -> Fut + 'static,
@@ -110,7 +119,9 @@ impl App {
         self.on_update(wrapped);
     }
 
-    // Conditional handler: run only when `pred(&update)` is true
+    /// Conditional handler: run only when `pred(&update)` is true
+    #[deprecated(since = "0.3.0", note = "Use on_update_ctx with filter module instead")]
+    #[allow(deprecated)]
     pub fn on_update_when<P, F, Fut>(&mut self, pred: P, f: F)
     where
         P: Fn(&Update) -> bool + 'static,
@@ -126,7 +137,9 @@ impl App {
         self.on_update(wrapped);
     }
 
-    // Convenience: route a specific Telegram command (e.g., "/version")
+    /// Convenience: route a specific Telegram command (e.g., "/version")
+    #[deprecated(since = "0.3.0", note = "Use on_command_ctx instead")]
+    #[allow(deprecated)]
     pub fn on_command<F, Fut>(&mut self, command: &'static str, f: F)
     where
         F: Fn(Update, Env) -> Fut + 'static,
@@ -292,12 +305,12 @@ pub trait Plugin {
 
 // Lightweight prelude to make imports simpler for users
 pub mod prelude {
+    pub use crate::error::{BotError, BotResult};
+    pub use crate::filter;
     pub use crate::frankenstein::{Update, UpdateContent};
     #[cfg(feature = "session")]
     pub use crate::session::DurableObjectStorage;
     pub use crate::session::{Context, KvStorage, Session, SessionStorage};
-    pub use crate::{
-        App, AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler, UpdateHandlerFn, UpdateOutcome,
-    };
+    pub use crate::{App, AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler};
     pub use worker::{Env, Request, Response, Result};
 }

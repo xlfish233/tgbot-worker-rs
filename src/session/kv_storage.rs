@@ -45,7 +45,7 @@ impl SessionStorage for KvStorage {
             .get(&self.full_key(key))
             .json::<T>()
             .await
-            .map_err(|e| WorkerError::RustError(format!("{:?}", e)))
+            .map_err(|e| WorkerError::RustError(e.to_string()))
     }
 
     async fn set<T: Serialize>(
@@ -63,13 +63,13 @@ impl SessionStorage for KvStorage {
         put.execute()
             .await
             .map(|_| ())
-            .map_err(|e| WorkerError::RustError(format!("{:?}", e)))
+            .map_err(|e| WorkerError::RustError(e.to_string()))
     }
 
     async fn delete(&self, key: &str) -> Result<(), Self::Error> {
         self.kv
             .delete(&self.full_key(key))
             .await
-            .map_err(|e| WorkerError::RustError(format!("{:?}", e)))
+            .map_err(|e| WorkerError::RustError(e.to_string()))
     }
 }

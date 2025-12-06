@@ -2,136 +2,187 @@
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-WTFPL-blue)
-![Version](https://img.shields.io/badge/version-0.2.0-orange)
+![Version](https://img.shields.io/badge/version-0.3.0-orange)
 
-This project is a Telegram bot running on Cloudflare Workers, built using Rust.
+A lightweight, serverless Telegram bot framework for Cloudflare Workers, built with Rust.
 
 [查看中文说明](README_zh.md)
 
 ## Table of Contents
 
-- [Telegram Bot Worker (Rust)](#telegram-bot-worker-rust)
-
-    - [Description](#description)
-    - [Features](#features)
-    - [Usage Example](#usage-example)
-    - [Project Details](#project-details)
-    - [Contributing](#contributing)
-        - [Special Notes](#special-notes)
-        - [Code Review Process](#code-review-process)
-    - [License](#license)
-
-## Description
-
-- This project provides a basic Telegram bot framework built on Cloudflare Workers
-  using Rust and frankenstein's api.
-- Register update handlers via `app.on_command(...)`, `app.on_update(...)`, or middleware `app.use_middleware(...)`.
-- Use `frankenstein::AsyncApi` directly to call Telegram API from handlers.
-- If you want known more details of usage please see the `examples` directory.
-
-**Project Status:** This project is still under development and currently only has basic implementations. If you have
-any good suggestions, please feel free to propose them, and they will be considered for implementation.
-
-Note: This project targets `wasm32-unknown-unknown` (pinned via `.cargo/config.toml`). Install the target with `rustup target add wasm32-unknown-unknown` and prefer running commands with the pinned toolchain (`+1.89.0`).
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [API Overview](#api-overview)
+- [Session Management](#session-management)
+- [Filter Combinators](#filter-combinators)
+- [Examples](#examples)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
-- **Cloudflare Workers Integration:** Leverages the power and scalability of
-  Cloudflare Workers.
-- **Rust Development:** Built with Rust for performance and safety.
-- **Telegram Bot API:** Interacts with the Telegram Bot API for receiving
-  updates and sending responses.
-- **Webhook Support:** Supports webhook setup for seamless communication with
-  Telegram.
-- **Extensible Architecture:** Designed to be easily extended with custom
-  commands and functionalities.
+- **Serverless-first**: Designed for Cloudflare Workers with zero cold-start overhead
+- **Session Management**: Built-in KV-based session storage with type-safe state
+- **Simplified API**: `Context::done()`, `Context::skip()`, `reply_and_done()` for clean handler code
+- **Filter Combinators**: Composable filters like `is_message`, `text_contains`, `callback_data_equals`
+- **Rich Telegram Methods**: `reply`, `reply_html`, `edit_text`, `delete_message`, `answer_callback`, `send_photo`
+- **Middleware Support**: Request/response pipeline with short-circuit capability
+- **Type Safety**: Leverages Rust's type system with `BotError` and `BotResult`
 
-## Usage Example
+**Project Status:** Active development. Contributions welcome!
+
+Note: This project targets `wasm32-unknown-unknown` (pinned via `.cargo/config.toml`). Install the target with `rustup target add wasm32-unknown-unknown` and prefer running commands with the pinned toolchain (`+1.89.0`).
+
+## Quick Start
+
+```rust
+use serde::{Deserialize, Serialize};
+use tgbot_worker_rs::prelude::*;
+use tgbot_worker_rs::session::{Context, KvStorage};
+use worker::*;
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+struct MyState {
+    counter: u32,
+}
+
+type Ctx = Context<MyState, KvStorage>;
+
+#[event(fetch)]
+pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Response> {
+    let mut app = App::new();
+    let storage = KvStorage::from_env(&env, "SESSION_KV", "session")?;
+
+    // Simple command handler with session
+    app.on_command_ctx::<MyState, _, _, _>("count", storage.clone(), |ctx| async move {
+        let mut state = ctx.session.get();
+        state.counter += 1;
+        ctx.session.set(state.clone());
+        ctx.reply_and_done(&format!("Count: {}", state.counter)).await
+    });
+
+    // Handle all text messages
+    app.on_update_ctx::<MyState, _, _, _>(storage, |ctx| async move {
+        match ctx.text() {
+            Some(text) if !text.starts_with('/') => {
+                ctx.reply_and_done(&format!("You said: {}", text)).await
+            }
+            _ => Ctx::skip(), // Not a text message, skip to next handler
+        }
+    });
+
+    app.on_fetch(req, env, ctx).await.map_err(|e| e.into())
+}
+```
+
+## API Overview
+
+### Context Methods
+
+| Method | Description |
+|--------|-------------|
+| `ctx.reply(text)` | Send a text message |
+| `ctx.reply_html(text)` | Send HTML-formatted message |
+| `ctx.reply_to(text)` | Reply to the current message (quote) |
+| `ctx.reply_and_done(text)` | Reply and end handler |
+| `ctx.edit_text(text)` | Edit message text |
+| `ctx.delete_message()` | Delete the current message |
+| `ctx.answer_callback(text, show_alert)` | Answer callback query |
+| `ctx.send_photo(photo)` | Send a photo |
+| `Context::done()` | End handler processing |
+| `Context::skip()` | Skip to next handler |
+
+### Accessor Methods
+
+| Method | Description |
+|--------|-------------|
+| `ctx.chat_id()` | Get chat ID |
+| `ctx.user_id()` | Get user ID |
+| `ctx.message_id()` | Get message ID |
+| `ctx.text()` | Get message text |
+| `ctx.command()` | Get command name (without `/`) |
+| `ctx.command_args()` | Get command arguments |
+| `ctx.callback_data()` | Get callback query data |
+| `ctx.telegram_api()` | Get raw Telegram API client |
+
+## Session Management
+
+Sessions are automatically loaded and saved per chat. Use KV storage for persistence:
+
+```rust
+// Define your state type
+#[derive(Default, Clone, Serialize, Deserialize)]
+struct UserState {
+    step: String,
+    data: Option<String>,
+}
+
+// Create storage from KV binding
+let storage = KvStorage::from_env(&env, "SESSION_KV", "prefix")?;
+
+// Access session in handler
+app.on_command_ctx::<UserState, _, _, _>("start", storage, |ctx| async move {
+    ctx.session.set(UserState {
+        step: "awaiting_input".into(),
+        data: None,
+    });
+    ctx.reply_and_done("Please enter your name:").await
+});
+```
+
+## Filter Combinators
+
+Use filters with `on_update_when` or check conditions in handlers:
+
+```rust
+use tgbot_worker_rs::filter::*;
+
+// Available filters
+is_message(&update)           // Is a message
+is_callback_query(&update)    // Is a callback query
+has_text(&update)             // Has text content
+is_command(&update)           // Is a command (starts with /)
+text_contains("hello")        // Text contains substring
+text_starts_with("hi")        // Text starts with prefix
+callback_data_equals("btn1")  // Callback data matches
+from_chat(chat_id)            // From specific chat
+from_user(user_id)            // From specific user
+
+// Combinators
+and(is_message, has_text)     // Both conditions
+or(is_message, is_callback_query)  // Either condition
+not(is_command)               // Negate filter
+```
+
+## Examples
 
 See the examples:
 
-- `examples/version`: command routing, Cloudflare KV, D1, and Queues integration. [Guide](examples/version/README.MD) · [中文说明](examples/version/README_zh.MD)
-- `examples/middleware`: how to use middlewares (`use_middleware`) and how to send a reply message. [Guide](examples/middleware/README.MD) · [中文说明](examples/middleware/README_zh.MD)
+- `examples/version`: command routing, Cloudflare KV, D1, and Queues integration. [Guide](examples/version/README.MD)
+- `examples/middleware`: middleware usage and reply messages. [Guide](examples/middleware/README.MD)
+- `examples/session`: multi-step registration flow with session state. 
 
-**Available commands in the example**
+### Running Examples
 
-- `/version` — replies with package version
-- `/kv_set <key> <value>` — stores a key/value in KV (prefix `demo`)
-- `/kv_get <key>` — reads the value from KV
-- `/d1_ping` — runs `SELECT 1 AS n` on D1 and echoes rows as JSON
-- `/queue_echo <text>` — enqueues a job and replies from the queue consumer
+```bash
+# Install toolchain
+rustup toolchain install 1.89.0
+rustup target add wasm32-unknown-unknown --toolchain 1.89.0
 
-**Quick start**
+# Install Wrangler
+npm i -g wrangler
 
-- Install toolchain and target
-  - `rustup toolchain install 1.89.0`
-  - `rustup target add wasm32-unknown-unknown --toolchain 1.89.0`
-- Install Wrangler (v3)
-  - `npm i -g wrangler`
-- Format/lint
-  - `cargo +1.89.0 fmt`
-  - `cargo +1.89.0 clippy --all-targets -- -D warnings`
+# Run example locally
+cd examples/session
+wrangler secret put API_KEY  # Your Telegram bot token
+wrangler dev
 
-**Configure example bindings**
+# Deploy
+wrangler publish
 
-- Secrets
-  - `cd examples/version`
-  - `wrangler secret put API_KEY` (Telegram Bot token)
-- KV (replace IDs in `examples/version/wrangler.toml`)
-  - `wrangler kv namespace create tgbot-worker-rs-demo`
-  - Copy the `id` and `preview_id` into `[[kv_namespaces]]` with `binding = "KV"`
-- D1
-  - `wrangler d1 create example_db`
-  - Put its `database_id` into `[[d1_databases]]` with `binding = "DB"`
-  - Optional: `wrangler d1 migrations apply DB` (uses `migrations/0001_init.sql`)
-- Queues
-  - `wrangler queues create demo-queue`
-  - Ensure `[[queues.producers]]` has `binding = "QUEUE"`, `queue = "demo-queue"`
-  - Ensure `[[queues.consumers]]` has `queue = "demo-queue"`
-
-**Run locally**
-
-- `cd examples/version && wrangler dev`
-  - Visit `http://127.0.0.1:8787/` → `Bot is running!`
-  - For D1/Queues, prefer `wrangler dev --remote` to run against Cloudflare backend
-  - To simulate a Telegram update locally:
-    - `curl -sS -X POST http://127.0.0.1:8787/telegramMessage -H 'content-type: application/json' -d '{"update_id":1,"message":{"message_id":1,"chat":{"id":123,"type":"private"},"text":"/kv_set foo bar"}}'`
-
-**Publish and set Telegram webhook**
-
-- `cd examples/version && wrangler publish`
-- Set webhook (replace placeholders):
-  - `curl "https://api.telegram.org/bot<API_KEY>/setWebhook?url=<your_worker_url>/telegramMessage"`
-- Send commands to your bot in Telegram to verify behavior
-
-### Middleware example quick start
-
-- Secrets
-  - `cd examples/middleware`
-  - `wrangler secret put API_KEY` (Telegram Bot token)
-- Run locally
-  - `wrangler dev`
-  - Visit `http://127.0.0.1:8787/` → `Bot is running!`
-- Commands
-  - `/reply` — replies to the triggering message using `ReplyParameters`
-  - `/echo <text>` — echoes back the text
-  - `/block` — demonstrates middleware short-circuiting with an immediate reply
-
-## Project Details
-
-- **Project Name:** `tgbot-worker-rs`
-- **Version:** `0.1.0`
-- **Author:** `xiaolin <446304319@qq.com>`
-
-**Dependencies:**
-
-- `worker`: Provides the core functionality for building Cloudflare Workers.
-- `worker-macros`: Provides macros for simplifying the development of Cloudflare
-  Workers.
-- `console_error_panic_hook`: Captures and logs panic messages to the console.
-- `serde`: Enables serialization and deserialization of data structures.
-- `serde_json`: Provides JSON serialization and deserialization support. 
-- `frankenstein`: A library for interacting with the Telegram Bot API.
+# Set webhook
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=<WORKER_URL>/telegramMessage"
+```
 
 ## Contributing
 
