@@ -1,0 +1,12 @@
+name = "session-example"
+main = "build/worker/shim.mjs"
+compatibility_date = "2024-11-11"
+
+[build]
+command = "cargo install -q worker-build && worker-build --release"
+
+[[kv_namespaces]]
+binding = "SESSION_KV"
+# TODO: replace with your namespace IDs
+id = "00000000000000000000000000000000"
+preview_id = "11111111111111111111111111111111"

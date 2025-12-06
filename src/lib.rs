@@ -11,6 +11,7 @@ use worker::*;
 pub mod cf;
 #[cfg(feature = "queue")]
 pub mod queue;
+pub mod session;
 pub mod storage;
 
 // Core result alias to reduce verbosity
@@ -150,6 +151,85 @@ impl App {
             f,
         );
     }
+
+    /// Register a context-based handler with session support
+    pub fn on_update_ctx<T, S, F, Fut>(&mut self, storage: S, f: F)
+    where
+        T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone + 'static,
+        S: session::SessionStorage + 'static,
+        F: Fn(session::Context<T, S>) -> Fut + 'static,
+        Fut: Future<Output = AppResult<Flow>> + 'static,
+    {
+        let f = Rc::new(f);
+        self.on_update_flow(Rc::new(move |update, env| {
+            let f = f.clone();
+            let storage = storage.clone();
+            async move {
+                let chat_id = session::extract_chat_id(&update).unwrap_or(0);
+                let user_id = session::extract_user_id(&update);
+                let sess = session::Session::load(storage, chat_id, user_id)
+                    .await
+                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
+                let ctx = session::Context::new(update, env, sess);
+                let result = f(ctx.clone()).await;
+                ctx.session
+                    .save(Some(3600))
+                    .await
+                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
+                result
+            }
+            .boxed_local()
+        }));
+    }
+
+    /// Register a context-based command handler with session support
+    pub fn on_command_ctx<T, S, F, Fut>(&mut self, command: &'static str, storage: S, f: F)
+    where
+        T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone + 'static,
+        S: session::SessionStorage + 'static,
+        F: Fn(session::Context<T, S>) -> Fut + 'static,
+        Fut: Future<Output = AppResult<Flow>> + 'static,
+    {
+        let cmd = if command.starts_with('/') {
+            command.to_string()
+        } else {
+            format!("/{}", command)
+        };
+        let f = Rc::new(f);
+        self.on_update_flow(Rc::new(move |update, env| {
+            let f = f.clone();
+            let storage = storage.clone();
+            let cmd = cmd.clone();
+            async move {
+                // Check if this is the target command
+                let is_match = match &update.content {
+                    UpdateContent::Message(m) => match &m.text {
+                        Some(text) => text.split_whitespace().next().unwrap_or("") == cmd,
+                        None => false,
+                    },
+                    _ => false,
+                };
+
+                if !is_match {
+                    return Ok(ControlFlow::Continue(()));
+                }
+
+                let chat_id = session::extract_chat_id(&update).unwrap_or(0);
+                let user_id = session::extract_user_id(&update);
+                let sess = session::Session::load(storage, chat_id, user_id)
+                    .await
+                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
+                let ctx = session::Context::new(update, env, sess);
+                let result = f(ctx.clone()).await;
+                ctx.session
+                    .save(Some(3600))
+                    .await
+                    .map_err(|e| worker::Error::RustError(e.to_string()))?;
+                result
+            }
+            .boxed_local()
+        }));
+    }
 }
 
 fn root<T>(_: Request, _: RouteContext<T>) -> Result<Response> {
@@ -213,6 +293,9 @@ pub trait Plugin {
 // Lightweight prelude to make imports simpler for users
 pub mod prelude {
     pub use crate::frankenstein::{Update, UpdateContent};
+    #[cfg(feature = "session")]
+    pub use crate::session::DurableObjectStorage;
+    pub use crate::session::{Context, KvStorage, Session, SessionStorage};
     pub use crate::{
         App, AppResult, Flow, MiddlewareFn, NextFn, UpdateHandler, UpdateHandlerFn, UpdateOutcome,
     };

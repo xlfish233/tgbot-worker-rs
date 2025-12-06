@@ -35,7 +35,7 @@ impl KvClient {
             .get(&self.k(key))
             .text()
             .await
-            .map_err(|e| worker::Error::RustError(e.to_string()))
+            .map_err(|e| worker::Error::RustError(format!("{:?}", e)))
     }
 
     pub async fn get_json<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
@@ -43,7 +43,7 @@ impl KvClient {
             .get(&self.k(key))
             .json::<T>()
             .await
-            .map_err(|e| worker::Error::RustError(e.to_string()))
+            .map_err(|e| worker::Error::RustError(format!("{:?}", e)))
     }
 
     pub async fn put_text(&self, key: &str, val: &str, ttl_seconds: Option<u64>) -> Result<()> {
@@ -54,7 +54,7 @@ impl KvClient {
         put.execute()
             .await
             .map(|_| ())
-            .map_err(|e| worker::Error::RustError(e.to_string()))
+            .map_err(|e| worker::Error::RustError(format!("{:?}", e)))
     }
 
     pub async fn put_json<T: Serialize>(
@@ -72,6 +72,6 @@ impl KvClient {
         self.kv
             .delete(&self.k(key))
             .await
-            .map_err(|e| worker::Error::RustError(e.to_string()))
+            .map_err(|e| worker::Error::RustError(format!("{:?}", e)))
     }
 }
