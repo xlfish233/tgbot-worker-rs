@@ -52,9 +52,9 @@
 | **中** | Guard 过滤器 | `is_private()`、`is_group()`、`is_user_in()` 聊天类型守卫 | ✅ 已完成 |
 | **中** | 菜单系统 | 支持分页的交互式内联按钮菜单 | ✅ 已完成 |
 | **中** | 忽略旧更新 | 通过 `is_recent()` 跳过超过 N 秒的过期更新 | ✅ 已完成 |
-| **低** | 国际化支持 | 多语言/本地化辅助工具 | 🔲 待开发 |
-| **低** | 指标/日志 | 结构化日志和更新处理指标 | 🔲 待开发 |
-| **低** | 机器人命令菜单 | 通过 `setMyCommands` 自动向 Telegram 注册命令 | 🔲 待开发 |
+| **低** | 国际化支持 | 轻量级 JSON 多语言支持 | ✅ 已完成 |
+| **低** | 指标/日志 | 结构化日志宏和指标计数器 | ✅ 已完成 |
+| **低** | 机器人命令菜单 | 通过 `setMyCommands` 自动向 Telegram 注册命令 | ✅ 已完成 |
 
 > 灵感来自主流框架：[teloxide](https://github.com/teloxide/teloxide)、[grammY](https://grammy.dev/)、[python-telegram-bot](https://python-telegram-bot.org/)
 
@@ -375,6 +375,63 @@ match bot.send_message(chat_id, "你好").await {
         }
     }
 }
+```
+
+## 机器人命令菜单
+
+向 Telegram 注册命令菜单：
+
+```rust
+// 设置命令
+bot.set_my_commands(&[
+    ("start", "启动机器人"),
+    ("help", "显示帮助"),
+    ("settings", "打开设置"),
+]).await?;
+
+// 获取当前命令
+let commands = bot.get_my_commands().await?;
+
+// 删除所有命令
+bot.delete_my_commands().await?;
+```
+
+## 国际化 (I18n)
+
+轻量级 JSON 翻译系统：
+
+```rust
+use tgbot_worker_rs::i18n::I18n;
+
+let mut i18n = I18n::new("en");
+
+// 加载翻译
+i18n.load_json("en", r#"{"hello": "Hello, {name}!", "bye": "Goodbye!"}"#)?;
+i18n.load_json("zh", r#"{"hello": "你好，{name}！", "bye": "再见！"}"#)?;
+
+// 获取翻译
+let text = i18n.t("en", "bye"); // "Goodbye!"
+
+// 带参数替换
+let text = i18n.t_args("zh", "hello", &[("name", "世界")]); // "你好，世界！"
+```
+
+## 日志与指标
+
+适用于 Cloudflare Workers 的结构化日志宏：
+
+```rust
+use tgbot_worker_rs::{log_info, log_error, log_warn, log_debug};
+use tgbot_worker_rs::logging::Metrics;
+
+log_info!("机器人已启动");
+log_error!("处理失败: {}", error);
+
+// 追踪指标
+let mut metrics = Metrics::new();
+metrics.record_update();
+metrics.record_command("start");
+log_info!("{}", metrics.summary());
 ```
 
 ## 示例

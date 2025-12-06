@@ -5,11 +5,13 @@
 
 use frankenstein::client_reqwest::Bot as FrankensteinBot;
 use frankenstein::methods::{
-    AnswerCallbackQueryParams, BanChatMemberParams, DeleteMessageParams, EditMessageTextParams,
-    PinChatMessageParams, PromoteChatMemberParams, RestrictChatMemberParams, SendMessageParams,
-    SendPhotoParams, SetChatDescriptionParams, SetChatTitleParams, UnbanChatMemberParams,
-    UnpinAllChatMessagesParams, UnpinChatMessageParams,
+    AnswerCallbackQueryParams, BanChatMemberParams, DeleteMessageParams, DeleteMyCommandsParams,
+    EditMessageTextParams, GetMyCommandsParams, PinChatMessageParams, PromoteChatMemberParams,
+    RestrictChatMemberParams, SendMessageParams, SendPhotoParams, SetChatDescriptionParams,
+    SetChatTitleParams, SetMyCommandsParams, UnbanChatMemberParams, UnpinAllChatMessagesParams,
+    UnpinChatMessageParams,
 };
+use frankenstein::types::BotCommand;
 use frankenstein::types::{
     ChatPermissions, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyMarkup, ReplyParameters,
 };
@@ -410,6 +412,56 @@ impl Bot {
             .build();
         self.api.set_chat_description(&params).await?;
         Ok(())
+    }
+
+    // =========================================================================
+    // Bot Commands Menu
+    // =========================================================================
+
+    /// Set the bot's command menu.
+    ///
+    /// # Example
+    /// ```ignore
+    /// bot.set_my_commands(&[
+    ///     ("start", "Start the bot"),
+    ///     ("help", "Show help message"),
+    ///     ("settings", "Open settings"),
+    /// ]).await?;
+    /// ```
+    pub async fn set_my_commands(&self, commands: &[(&str, &str)]) -> BotResult<bool> {
+        let bot_commands: Vec<BotCommand> = commands
+            .iter()
+            .map(|(cmd, desc)| {
+                BotCommand::builder()
+                    .command(cmd.to_string())
+                    .description(desc.to_string())
+                    .build()
+            })
+            .collect();
+
+        let params = SetMyCommandsParams::builder()
+            .commands(bot_commands)
+            .build();
+        let result = self.api.set_my_commands(&params).await?;
+        Ok(result.result)
+    }
+
+    /// Delete the bot's command menu.
+    pub async fn delete_my_commands(&self) -> BotResult<bool> {
+        let params = DeleteMyCommandsParams::builder().build();
+        let result = self.api.delete_my_commands(&params).await?;
+        Ok(result.result)
+    }
+
+    /// Get the current bot command menu.
+    pub async fn get_my_commands(&self) -> BotResult<Vec<(String, String)>> {
+        let params = GetMyCommandsParams::builder().build();
+        let result = self.api.get_my_commands(&params).await?;
+        Ok(result
+            .result
+            .into_iter()
+            .map(|c| (c.command, c.description))
+            .collect())
     }
 
     /// Kick a user from a chat (ban and immediately unban).

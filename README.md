@@ -52,9 +52,9 @@ Planned features and improvements (contributions welcome!):
 | **Medium** | Guard Filters | `is_private()`, `is_group()`, `is_user_in()` chat type guards | ✅ Done |
 | **Medium** | Menu System | Interactive inline button menus with pagination | ✅ Done |
 | **Medium** | Ignore Old Updates | Skip stale updates older than N seconds via `is_recent()` | ✅ Done |
-| **Low** | I18n Support | Internationalization/localization helpers | 🔲 TODO |
-| **Low** | Metrics/Logging | Structured logging and update processing metrics | 🔲 TODO |
-| **Low** | Bot Commands Menu | Auto-register commands with Telegram via `setMyCommands` | 🔲 TODO |
+| **Low** | I18n Support | Lightweight JSON-based internationalization | ✅ Done |
+| **Low** | Metrics/Logging | Structured logging macros and metrics counter | ✅ Done |
+| **Low** | Bot Commands Menu | Auto-register commands with Telegram via `setMyCommands` | ✅ Done |
 
 > Inspired by mainstream frameworks: [teloxide](https://github.com/teloxide/teloxide), [grammY](https://grammy.dev/), [python-telegram-bot](https://python-telegram-bot.org/)
 
@@ -375,6 +375,63 @@ match bot.send_message(chat_id, "Hello").await {
         }
     }
 }
+```
+
+## Bot Commands Menu
+
+Register commands with Telegram's command menu:
+
+```rust
+// Set commands
+bot.set_my_commands(&[
+    ("start", "Start the bot"),
+    ("help", "Show help message"),
+    ("settings", "Open settings"),
+]).await?;
+
+// Get current commands
+let commands = bot.get_my_commands().await?;
+
+// Delete all commands
+bot.delete_my_commands().await?;
+```
+
+## I18n (Internationalization)
+
+Lightweight JSON-based translation system:
+
+```rust
+use tgbot_worker_rs::i18n::I18n;
+
+let mut i18n = I18n::new("en");
+
+// Load translations
+i18n.load_json("en", r#"{"hello": "Hello, {name}!", "bye": "Goodbye!"}"#)?;
+i18n.load_json("zh", r#"{"hello": "你好，{name}！", "bye": "再见！"}"#)?;
+
+// Get translation
+let text = i18n.t("en", "bye"); // "Goodbye!"
+
+// With argument substitution
+let text = i18n.t_args("zh", "hello", &[("name", "世界")]); // "你好，世界！"
+```
+
+## Logging & Metrics
+
+Structured logging macros for Cloudflare Workers:
+
+```rust
+use tgbot_worker_rs::{log_info, log_error, log_warn, log_debug};
+use tgbot_worker_rs::logging::Metrics;
+
+log_info!("Bot started");
+log_error!("Failed to process: {}", error);
+
+// Track metrics
+let mut metrics = Metrics::new();
+metrics.record_update();
+metrics.record_command("start");
+log_info!("{}", metrics.summary());
 ```
 
 ## Examples
