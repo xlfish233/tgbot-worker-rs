@@ -56,6 +56,20 @@ Planned features and improvements (contributions welcome!):
 | **Low** | Metrics/Logging | Structured logging macros and metrics counter | ✅ Done |
 | **Low** | Bot Commands Menu | Auto-register commands with Telegram via `setMyCommands` | ✅ Done |
 
+### Testing Roadmap
+
+| Layer | Scope | Method | Status |
+|-------|-------|--------|--------|
+| **Layer 1** | Pure logic (command, i18n, menu, retry, keyboard) | `cargo test --target x86_64-*` | ✅ Done |
+| **Layer 2** | Telegram types (filter, message, handler) | Mock factory + native tests | 🔲 TODO |
+| **Layer 3** | Integration (bot, storage, session) | Miniflare + wrangler dev | 🔲 TODO |
+
+**Testing Notes:**
+- Default target is `wasm32-unknown-unknown` (Cloudflare Workers)
+- Pure Rust tests: `cargo test --target x86_64-unknown-linux-gnu`
+- wasm tests require `wasm-bindgen-test` or Miniflare
+- See [workers-rs testing docs](https://github.com/cloudflare/workers-rs) for integration testing
+
 > Inspired by mainstream frameworks: [teloxide](https://github.com/teloxide/teloxide), [grammY](https://grammy.dev/), [python-telegram-bot](https://python-telegram-bot.org/)
 
 ## Quick Start

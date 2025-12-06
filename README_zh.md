@@ -56,6 +56,20 @@
 | **低** | 指标/日志 | 结构化日志宏和指标计数器 | ✅ 已完成 |
 | **低** | 机器人命令菜单 | 通过 `setMyCommands` 自动向 Telegram 注册命令 | ✅ 已完成 |
 
+### 测试路线图
+
+| 层级 | 范围 | 方法 | 状态 |
+|------|------|------|------|
+| **Layer 1** | 纯逻辑 (command, i18n, menu, retry, keyboard) | `cargo test --target x86_64-*` | ✅ 已完成 |
+| **Layer 2** | Telegram 类型 (filter, message, handler) | Mock 工厂 + 原生测试 | 🔲 待开发 |
+| **Layer 3** | 集成测试 (bot, storage, session) | Miniflare + wrangler dev | 🔲 待开发 |
+
+**测试说明：**
+- 默认 target 是 `wasm32-unknown-unknown` (Cloudflare Workers)
+- 纯 Rust 测试：`cargo test --target x86_64-unknown-linux-gnu`
+- wasm 测试需要 `wasm-bindgen-test` 或 Miniflare
+- 集成测试参考 [workers-rs 测试文档](https://github.com/cloudflare/workers-rs)
+
 > 灵感来自主流框架：[teloxide](https://github.com/teloxide/teloxide)、[grammY](https://grammy.dev/)、[python-telegram-bot](https://python-telegram-bot.org/)
 
 ## 快速开始
