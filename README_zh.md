@@ -2,7 +2,7 @@
 
 ![构建状态](https://img.shields.io/badge/build-passing-brightgreen)
 ![许可证](https://img.shields.io/badge/license-WTFPL-blue)
-![版本](https://img.shields.io/badge/version-0.3.0-orange)
+![版本](https://img.shields.io/badge/version-0.4.0-orange)
 
 轻量级、无服务器的 Telegram 机器人框架，专为 Cloudflare Workers 设计，使用 Rust 构建。
 
@@ -14,8 +14,12 @@
 - [开发路线图](#开发路线图)
 - [快速开始](#快速开始)
 - [API 概览](#api-概览)
-- [会话管理](#会话管理)
 - [过滤器组合](#过滤器组合)
+- [键盘构建器](#键盘构建器)
+- [命令解析](#命令解析)
+- [dptree 风格处理器](#dptree-风格处理器)
+- [对话/FSM 系统](#对话fsm-系统)
+- [重试工具](#重试工具)
 - [示例](#示例)
 - [贡献](#贡献)
 - [许可证](#许可证)
@@ -43,8 +47,9 @@
 | **高** | 键盘构建器 | 类型安全的内联/回复键盘构建 API | ✅ 已完成 |
 | **高** | 命令参数解析 | 结构化解析：`/remind 30m "文本"` → `(Duration, String)` | ✅ 已完成 |
 | **高** | 速率限制 | 自动重试 + 指数退避 + flood wait 处理 | ✅ 已完成 |
+| **高** | dptree 处理器 | 受 teloxide dptree 启发的可组合处理器链 | ✅ 已完成 |
+| **高** | 对话/FSM | 支持状态持久化的多步对话流程 | ✅ 已完成 |
 | **中** | Guard 中间件 | `only_admin()`、`only_private()`、`only_group()` 权限守卫 | 🔲 待开发 |
-| **中** | 对话/向导 | 支持分支逻辑的多步对话流程 | 🔲 待开发 |
 | **中** | 菜单系统 | 支持分页的交互式内联按钮菜单 | 🔲 待开发 |
 | **中** | 忽略旧更新 | 跳过超过 N 秒的过期更新 | 🔲 待开发 |
 | **低** | 国际化支持 | 多语言/本地化辅助工具 | 🔲 待开发 |
@@ -91,34 +96,6 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
     });
 
     app.run(req, env, ctx).await
-}
-```
-
-### 会话 API（用于有状态的处理器）
-
-```rust
-use serde::{Deserialize, Serialize};
-use tgbot_worker_rs::prelude::*;
-use worker::*;
-
-#[derive(Default, Clone, Serialize, Deserialize)]
-struct MyState { counter: u32 }
-
-type Ctx = Context<MyState, KvStorage>;
-
-#[event(fetch)]
-pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Response> {
-    let mut app = App::new();
-    let storage = KvStorage::from_env(&env, "SESSION_KV", "session")?;
-
-    app.on_command_ctx::<MyState, _, _, _>("count", storage, |ctx| async move {
-        let mut state = ctx.session.get();
-        state.counter += 1;
-        ctx.session.set(state.clone());
-        ctx.reply_and_done(&format!("计数: {}", state.counter)).await
-    });
-
-    app.on_fetch(req, env, ctx).await
 }
 ```
 
@@ -184,45 +161,9 @@ pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Respo
 | `query.chat_id()` | 获取聊天 ID |
 | `query.message_id()` | 获取消息 ID |
 
-### Context 方法（会话 API）
-
-| 方法 | 描述 |
-|------|------|
-| `ctx.reply(text)` | 发送文本消息 |
-| `ctx.reply_and_done(text)` | 回复并结束处理 |
-| `ctx.edit_text(text)` | 编辑消息文本 |
-| `ctx.delete_message()` | 删除当前消息 |
-| `Context::done()` | 结束处理器处理 |
-| `Context::skip()` | 跳到下一个处理器 |
-
-## 会话管理
-
-会话按聊天自动加载和保存。使用 KV 存储进行持久化：
-
-```rust
-// 定义状态类型
-#[derive(Default, Clone, Serialize, Deserialize)]
-struct UserState {
-    step: String,
-    data: Option<String>,
-}
-
-// 从 KV 绑定创建存储
-let storage = KvStorage::from_env(&env, "SESSION_KV", "prefix")?;
-
-// 在处理器中访问会话
-app.on_command_ctx::<UserState, _, _, _>("start", storage, |ctx| async move {
-    ctx.session.set(UserState {
-        step: "awaiting_input".into(),
-        data: None,
-    });
-    ctx.reply_and_done("请输入你的名字：").await
-});
-```
-
 ## 过滤器组合
 
-使用过滤器配合 `on_update_when` 或在处理器中检查条件：
+使用过滤器配合处理器检查条件：
 
 ```rust
 use tgbot_worker_rs::filter::*;
@@ -291,6 +232,91 @@ use tgbot_worker_rs::command::parse_duration;
 let seconds = parse_duration("30m")?;  // 1800
 let seconds = parse_duration("1h")?;   // 3600
 let seconds = parse_duration("1d")?;   // 86400
+```
+
+## dptree 风格处理器
+
+构建受 [teloxide dptree](https://github.com/teloxide/dptree) 启发的可组合处理器链：
+
+```rust
+use tgbot_worker_rs::dptree;
+
+// 使用 chain() 和 branch() 组合处理器
+let handler = dptree::entry()
+    // 首先尝试 /start 命令
+    .branch(
+        dptree::filter_command("start")
+            .chain(dptree::endpoint(handle_start))
+    )
+    // 尝试 /help 命令
+    .branch(
+        dptree::filter_command("help")
+            .chain(dptree::endpoint(handle_help))
+    )
+    // 处理回调查询
+    .branch(
+        dptree::filter(|upd| matches!(upd.content, UpdateContent::CallbackQuery(_)))
+            .chain(dptree::endpoint_callback(handle_callback))
+    )
+    // 其他消息的回退处理
+    .branch(dptree::endpoint(handle_fallback));
+
+async fn handle_start(bot: Bot, msg: Message) -> BotResult<()> {
+    bot.send_message(msg.chat_id(), "欢迎！").await
+}
+```
+
+处理器控制流：
+- `Continue` → 继续执行链中的下一个处理器
+- `Skip` → 尝试下一个分支
+- `Break(Response)` → 停止处理
+
+## 对话/FSM 系统
+
+构建支持状态持久化的多步对话流程：
+
+```rust
+use tgbot_worker_rs::dialogue::Dialogue;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+enum RegState {
+    #[default]
+    Start,
+    AwaitingName,
+    AwaitingEmail { name: String },
+}
+
+async fn handle_registration(
+    bot: Bot,
+    msg: Message,
+    dialogue: Dialogue<RegState, KvStorage>,
+) -> BotResult<()> {
+    // 从存储加载状态
+    dialogue.load().await.ok();
+
+    match dialogue.get() {
+        RegState::Start => {
+            bot.send_message(msg.chat_id(), "你叫什么名字？").await?;
+            dialogue.update(RegState::AwaitingName);
+        }
+        RegState::AwaitingName => {
+            let name = msg.text().unwrap_or("").to_string();
+            bot.send_message(msg.chat_id(), "你的邮箱是？").await?;
+            dialogue.update(RegState::AwaitingEmail { name });
+        }
+        RegState::AwaitingEmail { name } => {
+            let email = msg.text().unwrap_or("");
+            bot.send_message(
+                msg.chat_id(),
+                &format!("完成！{} <{}>", name, email)
+            ).await?;
+            dialogue.exit().await.ok();
+        }
+    }
+    dialogue.save().await.ok();
+    Ok(())
+}
 ```
 
 ## 重试工具
