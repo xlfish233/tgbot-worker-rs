@@ -1,11 +1,24 @@
+use core::ops::ControlFlow;
 use std::rc::Rc;
 
 use futures_util::FutureExt;
+use tgbot_worker_rs::frankenstein::client_reqwest::Bot;
+use tgbot_worker_rs::frankenstein::methods::SendMessageParams;
+use tgbot_worker_rs::frankenstein::types::ReplyParameters;
+use tgbot_worker_rs::frankenstein::updates::UpdateContent;
+use tgbot_worker_rs::frankenstein::AsyncTelegramApi;
 use tgbot_worker_rs::App;
-use tgbot_worker_rs::frankenstein::{
-    AsyncApi, AsyncTelegramApi, ReplyParameters, SendMessageParams, UpdateContent,
-};
 use worker::*;
+
+/// Helper to check if update is a specific command
+fn is_command(update: &tgbot_worker_rs::frankenstein::updates::Update, cmd: &str) -> bool {
+    if let UpdateContent::Message(m) = &update.content {
+        if let Some(text) = &m.text {
+            return text.split_whitespace().next().unwrap_or("") == cmd;
+        }
+    }
+    false
+}
 
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
@@ -13,120 +26,118 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 
     let mut app = App::new();
 
-    // Middleware 1: 轻量日志（不打印敏感内容）
-    // 展示如何在进入 handler 前后包裹逻辑
+    // Middleware 1: Lightweight logging (no sensitive data)
     app.use_middleware(Rc::new(|update, env, next| {
         async move {
-            if let UpdateContent::Message(msg) = &update.content
-                && let Some(text) = &msg.text
-            {
-                // 避免打印完整负载，仅打印最小必要信息
-                console_log!(
-                    "[mw:log] chat={} msg_id={} text={}",
-                    msg.chat.id,
-                    msg.message_id,
-                    text
-                );
-            }
-
-            // 放行到下一环节（其它中间件/业务 handler）
-            let out = next(update, env).await?;
-            Ok(out)
-        }
-        .boxed_local()
-    }));
-
-    // Middleware 2: 条件短路
-    // 当消息以 "/block" 开头时，中间件直接回复并阻止后续 handler 运行
-    app.use_middleware(Rc::new(|update, env, next| {
-        async move {
-            if let UpdateContent::Message(msg) = &update.content
-                && let Some(text) = &msg.text
-                && text.trim_start().starts_with("/block")
-            {
-                let api_key = match env.secret("API_KEY") {
-                    Ok(s) => s.to_string(),
-                    Err(_) => String::new(),
-                };
-                if !api_key.is_empty() {
-                    let tg = AsyncApi::new(&api_key);
-                    let params = SendMessageParams::builder()
-                        .chat_id(msg.chat.id)
-                        .text("Blocked by middleware")
-                        .build();
-                    let _ = tg.send_message(&params).await;
+            if let UpdateContent::Message(msg) = &update.content {
+                if let Some(text) = &msg.text {
+                    console_log!(
+                        "[mw:log] chat={} msg_id={} text={}",
+                        msg.chat.id,
+                        msg.message_id,
+                        text
+                    );
                 }
-                return Response::ok("").map(core::ops::ControlFlow::Break);
             }
             next(update, env).await
         }
         .boxed_local()
     }));
 
-    // 业务示例 1：/reply —— 使用 reply 参数对消息进行“回复”
-    app.on_command("reply", |update, env: Env| async move {
-        let api_key = match env.secret("API_KEY") {
-            Ok(s) => s.to_string(),
-            Err(_) => return Response::error("API_KEY not found", 500).map(Some),
-        };
-
-        if let UpdateContent::Message(message) = update.content.clone() {
-            let tg = AsyncApi::new(&api_key);
-
-            // 使用 ReplyParameters 指定要回复的 message_id（frankenstein >= 0.35）
-            let reply_params = ReplyParameters::builder()
-                .message_id(message.message_id)
-                .build();
-
-            let params = SendMessageParams::builder()
-                .chat_id(message.chat.id)
-                .text("This is a reply via SendMessage")
-                .reply_parameters(reply_params)
-                .build();
-
-            if let Err(e) = tg.send_message(&params).await {
-                console_error!("send_message error: {}", e);
+    // Middleware 2: Conditional short-circuit
+    // When message starts with "/block", middleware replies and stops further handlers
+    app.use_middleware(Rc::new(|update, env, next| {
+        async move {
+            if let UpdateContent::Message(msg) = &update.content {
+                if let Some(text) = &msg.text {
+                    if text.trim_start().starts_with("/block") {
+                        if let Ok(secret) = env.secret("API_KEY") {
+                            let bot = Bot::new(&secret.to_string());
+                            let params = SendMessageParams::builder()
+                                .chat_id(msg.chat.id)
+                                .text("Blocked by middleware")
+                                .build();
+                            let _ = bot.send_message(&params).await;
+                        }
+                        return Ok(ControlFlow::Break(Response::ok("")?));
+                    }
+                }
             }
-            return Response::ok("").map(Some);
+            next(update, env).await
         }
+        .boxed_local()
+    }));
 
-        Ok(None)
-    });
+    // /reply - Demonstrate reply with ReplyParameters
+    app.on_update_flow(Rc::new(|update, env| {
+        async move {
+            if !is_command(&update, "/reply") {
+                return Ok(ControlFlow::Continue(()));
+            }
 
-    // 业务示例 2：/echo <text> —— 简单回声（非 reply 格式）
-    app.on_command("echo", |update, env: Env| async move {
-        let api_key = match env.secret("API_KEY") {
-            Ok(s) => s.to_string(),
-            Err(_) => return Response::error("API_KEY not found", 500).map(Some),
-        };
-
-        if let UpdateContent::Message(message) = update.content.clone()
-            && let Some(text) = message.text
-        {
-            let payload = text
-                .split_once(' ')
-                .map(|(_, rest)| rest)
-                .unwrap_or("")
+            let api_key = env
+                .secret("API_KEY")
+                .map_err(|_| Error::RustError("API_KEY not found".into()))?
                 .to_string();
 
-            if payload.is_empty() {
-                return Response::error("Usage: /echo <text>", 400).map(Some);
+            if let UpdateContent::Message(message) = &update.content {
+                let bot = Bot::new(&api_key);
+
+                let reply_params = ReplyParameters::builder()
+                    .message_id(message.message_id)
+                    .build();
+
+                let params = SendMessageParams::builder()
+                    .chat_id(message.chat.id)
+                    .text("This is a reply via SendMessage")
+                    .reply_parameters(reply_params)
+                    .build();
+
+                if let Err(e) = bot.send_message(&params).await {
+                    console_error!("send_message error: {}", e);
+                }
+            }
+            Ok(ControlFlow::Break(Response::ok("")?))
+        }
+        .boxed_local()
+    }));
+
+    // /echo <text> - Simple echo (not a reply format)
+    app.on_update_flow(Rc::new(|update, env| {
+        async move {
+            if !is_command(&update, "/echo") {
+                return Ok(ControlFlow::Continue(()));
             }
 
-            let tg = AsyncApi::new(&api_key);
-            let params = SendMessageParams::builder()
-                .chat_id(message.chat.id)
-                .text(format!("Echo: {}", payload))
-                .build();
-            let _ = tg.send_message(&params).await;
+            let api_key = env
+                .secret("API_KEY")
+                .map_err(|_| Error::RustError("API_KEY not found".into()))?
+                .to_string();
 
-            return Response::ok("").map(Some);
+            if let UpdateContent::Message(message) = &update.content {
+                let text = message.text.as_deref().unwrap_or("");
+                let payload = text.split_once(' ').map(|(_, rest)| rest).unwrap_or("");
+
+                if payload.is_empty() {
+                    return Ok(ControlFlow::Break(Response::error(
+                        "Usage: /echo <text>",
+                        400,
+                    )?));
+                }
+
+                let bot = Bot::new(&api_key);
+                let params = SendMessageParams::builder()
+                    .chat_id(message.chat.id)
+                    .text(format!("Echo: {}", payload))
+                    .build();
+                let _ = bot.send_message(&params).await;
+            }
+            Ok(ControlFlow::Break(Response::ok("")?))
         }
-
-        Ok(None)
-    });
+        .boxed_local()
+    }));
 
     app.on_fetch(req, env, ctx)
         .await
-        .map_err(|e| worker::Error::from(e.to_string()))
+        .map_err(|e| Error::from(e.to_string()))
 }

@@ -1,201 +1,219 @@
-use tgbot_worker_rs::App;
-use tgbot_worker_rs::frankenstein::{AsyncApi, AsyncTelegramApi, SendMessageParams, UpdateContent};
+use core::ops::ControlFlow;
+use std::rc::Rc;
+
+use futures_util::FutureExt;
+use serde::{Deserialize, Serialize};
+use tgbot_worker_rs::frankenstein::client_reqwest::Bot;
+use tgbot_worker_rs::frankenstein::methods::SendMessageParams;
+use tgbot_worker_rs::frankenstein::updates::UpdateContent;
+use tgbot_worker_rs::frankenstein::AsyncTelegramApi;
 use tgbot_worker_rs::storage::d1::D1Client;
 use tgbot_worker_rs::storage::kv::KvClient;
+use tgbot_worker_rs::App;
 use worker::*;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct QueueJob {
     chat_id: i64,
     text: String,
+}
+
+/// Helper to check if update is a specific command
+fn is_command(update: &tgbot_worker_rs::frankenstein::updates::Update, cmd: &str) -> bool {
+    if let UpdateContent::Message(m) = &update.content {
+        if let Some(text) = &m.text {
+            return text.split_whitespace().next().unwrap_or("") == cmd;
+        }
+    }
+    false
 }
 
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
     let mut app = App::new();
 
-    // Plugin-style: route the "/version" command
-    app.on_command("version", |update, env: Env| async move {
-        let api_key = match env.secret("API_KEY") {
-            Ok(secret) => secret.to_string(),
-            Err(_) => return Response::error("API_KEY not found", 500).map(Some),
-        };
+    // /version - Show package version
+    app.on_update_flow(Rc::new(|update, env| {
+        async move {
+            if !is_command(&update, "/version") {
+                return Ok(ControlFlow::Continue(()));
+            }
 
-        if let UpdateContent::Message(message) = update.content
-            && let Some(text) = message.text
-        {
-            // exact match is already handled by on_command, but we keep safe guards
-            if text.split_whitespace().next().unwrap_or("") == "/version" {
-                let tg_api = AsyncApi::new(&api_key);
+            let api_key = env
+                .secret("API_KEY")
+                .map_err(|_| Error::RustError("API_KEY not found".into()))?
+                .to_string();
+
+            if let UpdateContent::Message(message) = &update.content {
+                let bot = Bot::new(&api_key);
                 let response = format!("tgbot-worker-rs version: {}", env!("CARGO_PKG_VERSION"));
                 let reply = SendMessageParams::builder()
                     .chat_id(message.chat.id)
                     .text(response)
                     .build();
-                if let Err(e) = tg_api.send_message(&reply).await {
+                if let Err(e) = bot.send_message(&reply).await {
                     console_error!("Error sending message: {}", e);
                 }
-                return Response::ok("").map(Some);
             }
+            Ok(ControlFlow::Break(Response::ok("")?))
         }
-        Ok(None)
-    });
+        .boxed_local()
+    }));
 
-    // Demonstrate Queue: /queue_echo <text>
-    app.on_command("queue_echo", |update, env: Env| async move {
-        if let UpdateContent::Message(message) = update.content.clone()
-            && let Some(text) = message.text
-        {
-            let payload = text.split_once(' ').map(|x| x.1).unwrap_or("").to_string();
-            if payload.is_empty() {
-                return Response::error("Usage: /queue_echo <text>", 400).map(Some);
+    // /queue_echo <text> - Demonstrate Queue
+    app.on_update_flow(Rc::new(|update, env| {
+        async move {
+            if !is_command(&update, "/queue_echo") {
+                return Ok(ControlFlow::Continue(()));
             }
 
-            let queue = match env.queue("QUEUE") {
-                Ok(q) => q,
-                Err(e) => {
-                    return Response::error(format!("QUEUE binding error: {}", e), 500).map(Some);
+            if let UpdateContent::Message(message) = &update.content {
+                let text = message.text.as_deref().unwrap_or("");
+                let payload = text.split_once(' ').map(|x| x.1).unwrap_or("").to_string();
+                if payload.is_empty() {
+                    return Ok(ControlFlow::Break(Response::error(
+                        "Usage: /queue_echo <text>",
+                        400,
+                    )?));
                 }
-            };
-            let job = QueueJob {
-                chat_id: message.chat.id,
-                text: payload,
-            };
-            if let Err(e) = queue.send(job).await {
-                return Response::error(format!("queue send error: {}", e), 500).map(Some);
+
+                let queue = env
+                    .queue("QUEUE")
+                    .map_err(|e| Error::RustError(format!("QUEUE binding error: {}", e)))?;
+                let job = QueueJob {
+                    chat_id: message.chat.id,
+                    text: payload,
+                };
+                queue
+                    .send(job)
+                    .await
+                    .map_err(|e| Error::RustError(format!("queue send error: {}", e)))?;
             }
-            return Response::ok("").map(Some);
+            Ok(ControlFlow::Break(Response::ok("")?))
         }
-        Ok(None)
-    });
+        .boxed_local()
+    }));
 
-    // Demonstrate KV: /kv_set <key> <value>
-    app.on_command("kv_set", |update, env: Env| async move {
-        if let UpdateContent::Message(message) = update.content.clone()
-            && let Some(text) = message.text
-        {
-            let mut parts = text.splitn(3, ' ');
-            let _cmd = parts.next(); // /kv_set
-            let key = match parts.next() {
-                Some(k) => k,
-                None => return Response::error("Usage: /kv_set <key> <value>", 400).map(Some),
-            };
-            let val = match parts.next() {
-                Some(v) => v,
-                None => return Response::error("Usage: /kv_set <key> <value>", 400).map(Some),
-            };
-
-            let kv = match KvClient::from_env(&env, "KV") {
-                Ok(kv) => kv.with_prefix("demo"),
-                Err(_) => return Response::error("KV binding 'KV' not found", 500).map(Some),
-            };
-            if let Err(e) = kv.put_text(key, val, None).await {
-                return Response::error(format!("KV put error: {}", e), 500).map(Some);
+    // /kv_set <key> <value> - Demonstrate KV
+    app.on_update_flow(Rc::new(|update, env| {
+        async move {
+            if !is_command(&update, "/kv_set") {
+                return Ok(ControlFlow::Continue(()));
             }
 
-            let api_key = match env.secret("API_KEY") {
-                Ok(s) => s.to_string(),
-                Err(_) => String::new(),
-            };
-            if !api_key.is_empty() {
-                let tg = AsyncApi::new(&api_key);
-                let reply = SendMessageParams::builder()
-                    .chat_id(message.chat.id)
-                    .text(format!("KV set ok: {}", key))
-                    .build();
-                let _ = tg.send_message(&reply).await;
+            if let UpdateContent::Message(message) = &update.content {
+                let text = message.text.as_deref().unwrap_or("");
+                let mut parts = text.splitn(3, ' ');
+                let _cmd = parts.next();
+                let key = parts.next().ok_or_else(|| {
+                    Error::RustError("Usage: /kv_set <key> <value>".into())
+                })?;
+                let val = parts.next().ok_or_else(|| {
+                    Error::RustError("Usage: /kv_set <key> <value>".into())
+                })?;
+
+                let kv = KvClient::from_env(&env, "KV")
+                    .map_err(|_| Error::RustError("KV binding 'KV' not found".into()))?
+                    .with_prefix("demo");
+                kv.put_text(key, val, None)
+                    .await
+                    .map_err(|e| Error::RustError(format!("KV put error: {}", e)))?;
+
+                if let Ok(secret) = env.secret("API_KEY") {
+                    let bot = Bot::new(&secret.to_string());
+                    let reply = SendMessageParams::builder()
+                        .chat_id(message.chat.id)
+                        .text(format!("KV set ok: {}", key))
+                        .build();
+                    let _ = bot.send_message(&reply).await;
+                }
             }
-            return Response::ok("").map(Some);
+            Ok(ControlFlow::Break(Response::ok("")?))
         }
-        Ok(None)
-    });
+        .boxed_local()
+    }));
 
-    // Demonstrate KV: /kv_get <key>
-    app.on_command("kv_get", |update, env: Env| async move {
-        if let UpdateContent::Message(message) = update.content.clone()
-            && let Some(text) = message.text
-        {
-            let mut parts = text.splitn(2, ' ');
-            let _cmd = parts.next(); // /kv_get
-            let key = match parts.next() {
-                Some(k) => k,
-                None => return Response::error("Usage: /kv_get <key>", 400).map(Some),
-            };
-
-            let kv = match KvClient::from_env(&env, "KV") {
-                Ok(kv) => kv.with_prefix("demo"),
-                Err(_) => return Response::error("KV binding 'KV' not found", 500).map(Some),
-            };
-            let value = kv
-                .get_text(key)
-                .await
-                .map_err(|e| worker::Error::from(e.to_string()))?;
-
-            let msg = match value {
-                Some(v) => format!("KV[{}] = {}", key, v),
-                None => format!("KV[{}] = <missing>", key),
-            };
-            let api_key = match env.secret("API_KEY") {
-                Ok(s) => s.to_string(),
-                Err(_) => String::new(),
-            };
-            if !api_key.is_empty() {
-                let tg = AsyncApi::new(&api_key);
-                let reply = SendMessageParams::builder()
-                    .chat_id(message.chat.id)
-                    .text(msg)
-                    .build();
-                let _ = tg.send_message(&reply).await;
-            }
-            return Response::ok("").map(Some);
-        }
-        Ok(None)
-    });
-
-    // Demonstrate D1: /d1_ping -> SELECT 1 as n
-    app.on_command("d1_ping", |update, env: Env| async move {
-        if let UpdateContent::Message(message) = update.content.clone() {
-            let db = match D1Client::from_env(&env, "DB") {
-                Ok(db) => db,
-                Err(_) => return Response::error("D1 binding 'DB' not found", 500).map(Some),
-            };
-
-            // Simple query without bindings
-            let stmt = db.db().prepare("SELECT 1 as n");
-            let result = match stmt.all().await {
-                Ok(r) => r,
-                Err(e) => return Response::error(format!("query error: {}", e), 500).map(Some),
-            };
-
-            // Render result compactly as JSON text
-            let text = match result.results::<serde_json::Value>() {
-                Ok(rows) => match serde_json::to_string(&rows) {
-                    Ok(s) => s,
-                    Err(e) => format!("serialize error: {}", e),
-                },
-                Err(e) => format!("result error: {}", e),
-            };
-
-            let api_key = match env.secret("API_KEY") {
-                Ok(s) => s.to_string(),
-                Err(_) => String::new(),
-            };
-            if !api_key.is_empty() {
-                let tg = AsyncApi::new(&api_key);
-                let reply = SendMessageParams::builder()
-                    .chat_id(message.chat.id)
-                    .text(format!("D1 ping => {}", text))
-                    .build();
-                let _ = tg.send_message(&reply).await;
+    // /kv_get <key> - Demonstrate KV
+    app.on_update_flow(Rc::new(|update, env| {
+        async move {
+            if !is_command(&update, "/kv_get") {
+                return Ok(ControlFlow::Continue(()));
             }
 
-            return Response::ok("").map(Some);
+            if let UpdateContent::Message(message) = &update.content {
+                let text = message.text.as_deref().unwrap_or("");
+                let mut parts = text.splitn(2, ' ');
+                let _cmd = parts.next();
+                let key = parts
+                    .next()
+                    .ok_or_else(|| Error::RustError("Usage: /kv_get <key>".into()))?;
+
+                let kv = KvClient::from_env(&env, "KV")
+                    .map_err(|_| Error::RustError("KV binding 'KV' not found".into()))?
+                    .with_prefix("demo");
+                let value = kv
+                    .get_text(key)
+                    .await
+                    .map_err(|e| Error::RustError(e.to_string()))?;
+
+                let msg = match value {
+                    Some(v) => format!("KV[{}] = {}", key, v),
+                    None => format!("KV[{}] = <missing>", key),
+                };
+
+                if let Ok(secret) = env.secret("API_KEY") {
+                    let bot = Bot::new(&secret.to_string());
+                    let reply = SendMessageParams::builder()
+                        .chat_id(message.chat.id)
+                        .text(msg)
+                        .build();
+                    let _ = bot.send_message(&reply).await;
+                }
+            }
+            Ok(ControlFlow::Break(Response::ok("")?))
         }
-        Ok(None)
-    });
-    app.on_fetch(req, env.clone(), ctx)
+        .boxed_local()
+    }));
+
+    // /d1_ping - Demonstrate D1
+    app.on_update_flow(Rc::new(|update, env| {
+        async move {
+            if !is_command(&update, "/d1_ping") {
+                return Ok(ControlFlow::Continue(()));
+            }
+
+            if let UpdateContent::Message(message) = &update.content {
+                let db = D1Client::from_env(&env, "DB")
+                    .map_err(|_| Error::RustError("D1 binding 'DB' not found".into()))?;
+
+                let stmt = db.db().prepare("SELECT 1 as n");
+                let result = stmt
+                    .all()
+                    .await
+                    .map_err(|e| Error::RustError(format!("query error: {}", e)))?;
+
+                let text = match result.results::<serde_json::Value>() {
+                    Ok(rows) => serde_json::to_string(&rows).unwrap_or_else(|e| format!("serialize error: {}", e)),
+                    Err(e) => format!("result error: {}", e),
+                };
+
+                if let Ok(secret) = env.secret("API_KEY") {
+                    let bot = Bot::new(&secret.to_string());
+                    let reply = SendMessageParams::builder()
+                        .chat_id(message.chat.id)
+                        .text(format!("D1 ping => {}", text))
+                        .build();
+                    let _ = bot.send_message(&reply).await;
+                }
+            }
+            Ok(ControlFlow::Break(Response::ok("")?))
+        }
+        .boxed_local()
+    }));
+
+    app.on_fetch(req, env, ctx)
         .await
-        .map_err(|e| worker::Error::from(e.to_string()))
+        .map_err(|e| Error::from(e.to_string()))
 }
 
 // Consume queue messages and reply in background
@@ -207,13 +225,12 @@ pub async fn queue_consumer(
 ) -> Result<()> {
     let api_key = match env.secret("API_KEY") {
         Ok(s) => s.to_string(),
-        Err(_) => String::new(),
+        Err(_) => {
+            console_warn!("API_KEY missing; queue messages will be dropped");
+            return Ok(());
+        }
     };
-    if api_key.is_empty() {
-        console_warn!("API_KEY missing; queue messages will be dropped");
-        return Ok(());
-    }
-    let tg = AsyncApi::new(&api_key);
+    let bot = Bot::new(&api_key);
     for msg in batch.iter() {
         let msg = msg?;
         let chat_id = msg.body().chat_id;
@@ -222,7 +239,7 @@ pub async fn queue_consumer(
             .chat_id(chat_id)
             .text(text)
             .build();
-        match tg.send_message(&reply).await {
+        match bot.send_message(&reply).await {
             Ok(_) => msg.ack(),
             Err(e) => {
                 console_error!("queue send tg error: {}", e);

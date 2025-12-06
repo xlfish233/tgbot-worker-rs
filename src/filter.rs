@@ -2,7 +2,7 @@
 //!
 //! Filters can be used with `App::on_update_when` to conditionally handle updates.
 
-use frankenstein::{Update, UpdateContent};
+use frankenstein::updates::{Update, UpdateContent};
 
 /// Check if update is a message
 pub fn is_message(u: &Update) -> bool {

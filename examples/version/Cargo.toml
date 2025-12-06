@@ -2,7 +2,7 @@
 name = "version"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.91"
 authors = ["xlfish233 <446304319@qq.com>"]
 
 [package.metadata.release]

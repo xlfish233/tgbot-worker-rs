@@ -4,7 +4,7 @@
 name = "tgbot-worker-rs"
 version = "0.3.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.91"
 authors = ["xiaolin <446304319@qq.com>"]
 
 [package.metadata.release]
@@ -20,7 +20,7 @@ path = "src/lib.rs"
 
 [dependencies]
 console_error_panic_hook = { version = "0.1.7" }
-frankenstein = { version = "0", features = ["async-http-client"], default-features = false }
+frankenstein = { version = "0.45", features = ["client-reqwest"], default-features = false }
 worker = { version = "0.7", features = ["http", "d1", "queue"] }
 futures-util = "0.3"
 async-trait = "0.1"

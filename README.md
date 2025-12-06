@@ -11,6 +11,7 @@ A lightweight, serverless Telegram bot framework for Cloudflare Workers, built w
 ## Table of Contents
 
 - [Features](#features)
+- [Roadmap](#roadmap)
 - [Quick Start](#quick-start)
 - [API Overview](#api-overview)
 - [Session Management](#session-management)
@@ -32,6 +33,25 @@ A lightweight, serverless Telegram bot framework for Cloudflare Workers, built w
 **Project Status:** Active development. Contributions welcome!
 
 Note: This project targets `wasm32-unknown-unknown` (pinned via `.cargo/config.toml`). Install the target with `rustup target add wasm32-unknown-unknown` and prefer running commands with the pinned toolchain (`+1.89.0`).
+
+## Roadmap
+
+Planned features and improvements (contributions welcome!):
+
+| Priority | Feature | Description | Status |
+|----------|---------|-------------|--------|
+| **High** | Keyboard Builder | Type-safe inline/reply keyboard construction API | 🔲 TODO |
+| **High** | Command Argument Parsing | Structured parsing: `/remind 30m "text"` → `(Duration, String)` | 🔲 TODO |
+| **High** | Rate Limiting | Auto-retry with exponential backoff, flood wait handling | 🔲 TODO |
+| **Medium** | Guard Middleware | `only_admin()`, `only_private()`, `only_group()` permission guards | 🔲 TODO |
+| **Medium** | Conversation/Wizard | Multi-step conversation flows with branching logic | 🔲 TODO |
+| **Medium** | Menu System | Interactive inline button menus with pagination | 🔲 TODO |
+| **Medium** | Ignore Old Updates | Skip stale updates older than N seconds | 🔲 TODO |
+| **Low** | I18n Support | Internationalization/localization helpers | 🔲 TODO |
+| **Low** | Metrics/Logging | Structured logging and update processing metrics | 🔲 TODO |
+| **Low** | Bot Commands Menu | Auto-register commands with Telegram via `setMyCommands` | 🔲 TODO |
+
+> Inspired by mainstream frameworks: [teloxide](https://github.com/teloxide/teloxide), [grammY](https://grammy.dev/), [python-telegram-bot](https://python-telegram-bot.org/)
 
 ## Quick Start
 

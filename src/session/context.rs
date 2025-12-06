@@ -1,15 +1,19 @@
 use core::ops::ControlFlow;
 
-use frankenstein::{
-    AnswerCallbackQueryParams, AsyncApi, AsyncTelegramApi, DeleteMessageParams,
-    EditMessageTextParams, MaybeInaccessibleMessage, ReplyParameters, SendMessageParams,
-    SendPhotoParams, UpdateContent,
+use frankenstein::client_reqwest::Bot;
+use frankenstein::input_file::FileUpload;
+use frankenstein::methods::{
+    AnswerCallbackQueryParams, DeleteMessageParams, EditMessageTextParams, SendMessageParams,
+    SendPhotoParams,
 };
+use frankenstein::ParseMode;
+use frankenstein::types::{MaybeInaccessibleMessage, ReplyParameters};
+use frankenstein::updates::{Update, UpdateContent};
+use frankenstein::AsyncTelegramApi;
 use worker::{Env, Response};
 
 use super::storage::{Session, SessionStorage};
 use crate::error::{BotError, BotResult};
-use crate::frankenstein::Update;
 use crate::{AppResult, Flow};
 
 /// Request context with session support
@@ -97,13 +101,13 @@ impl<T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone, S: Ses
     }
 
     /// Get Telegram API client
-    pub fn telegram_api(&self) -> AppResult<AsyncApi> {
+    pub fn telegram_api(&self) -> AppResult<Bot> {
         let key = self
             .env
             .secret("API_KEY")
             .map_err(|_| worker::Error::RustError("API_KEY not found".to_string()))?
             .to_string();
-        Ok(AsyncApi::new(&key))
+        Ok(Bot::new(&key))
     }
 
     /// Reply to the current chat
@@ -134,7 +138,7 @@ impl<T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone, S: Ses
         let params = SendMessageParams::builder()
             .chat_id(chat_id)
             .text(text)
-            .parse_mode(frankenstein::ParseMode::Html)
+            .parse_mode(ParseMode::Html)
             .build();
 
         api.send_message(&params)
@@ -326,7 +330,7 @@ impl<T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone, S: Ses
     }
 
     /// Send a photo to the current chat
-    pub async fn send_photo(&self, photo: impl Into<frankenstein::FileUpload>) -> BotResult<()> {
+    pub async fn send_photo(&self, photo: impl Into<FileUpload>) -> BotResult<()> {
         let api = self.telegram_api()?;
         let chat_id = self.chat_id().ok_or(BotError::MissingField("chat_id"))?;
 

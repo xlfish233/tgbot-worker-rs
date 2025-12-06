@@ -1,7 +1,7 @@
 use core::ops::ControlFlow;
 pub use frankenstein;
-use frankenstein::Update;
-use frankenstein::UpdateContent;
+use frankenstein::updates::Update;
+use frankenstein::updates::UpdateContent;
 use futures_util::FutureExt;
 use futures_util::future::LocalBoxFuture;
 use std::rc::Rc;
@@ -22,15 +22,7 @@ pub use filter::*;
 // Core result alias to reduce verbosity
 pub type AppResult<T = ()> = Result<T>;
 
-// HTTP request handler types
-pub type RequestFuture = LocalBoxFuture<'static, AppResult<Response>>;
-
-// Legacy update handler output: None to continue, Some(Response) to short-circuit
-pub type UpdateOutcome = Option<Response>;
-pub type UpdateFuture = LocalBoxFuture<'static, AppResult<UpdateOutcome>>;
-pub type UpdateHandlerFn = Rc<dyn Fn(Update, Env) -> UpdateFuture>;
-
-// Preferred flow-based handler: Continue or Break(Response)
+// Flow-based handler types
 pub type Flow = ControlFlow<Response>;
 pub type FlowFuture = LocalBoxFuture<'static, AppResult<Flow>>;
 pub type UpdateHandler = Rc<dyn Fn(Update, Env) -> FlowFuture>;
@@ -79,90 +71,15 @@ impl App {
         console_error_panic_hook::set_once();
         worker_route(req, env, self.as_data()).await
     }
-    // Note: raw request handler and manual env setter were removed in 0.2.0
 
-    /// Register a plugin-style update handler (legacy Option-based output)
-    #[deprecated(since = "0.3.0", note = "Use on_update_ctx or on_update_flow instead")]
-    pub fn on_update(&mut self, handler: UpdateHandlerFn) {
-        let wrapped: UpdateHandler = Rc::new(move |u, e| {
-            let h = handler.clone();
-            async move {
-                match h(u, e).await? {
-                    Some(resp) => Ok(ControlFlow::Break(resp)),
-                    None => Ok(ControlFlow::Continue(())),
-                }
-            }
-            .boxed_local()
-        });
-        self.update_handlers.push(wrapped);
-    }
-
-    // Register a flow-based handler directly
+    /// Register a flow-based handler directly
     pub fn on_update_flow(&mut self, handler: UpdateHandler) {
         self.update_handlers.push(handler);
     }
 
-    // Register middleware to run before/after handlers. Can short-circuit with a Response.
+    /// Register middleware to run before/after handlers. Can short-circuit with a Response.
     pub fn use_middleware(&mut self, mw: MiddlewareFn) {
         self.middlewares.push(mw);
-    }
-
-    /// Ergonomic helper: register an async closure/function without manual boxing
-    #[deprecated(since = "0.3.0", note = "Use on_update_ctx instead")]
-    #[allow(deprecated)]
-    pub fn on_update_async<F, Fut>(&mut self, f: F)
-    where
-        F: Fn(Update, Env) -> Fut + 'static,
-        Fut: Future<Output = AppResult<UpdateOutcome>> + 'static,
-    {
-        let wrapped: UpdateHandlerFn = Rc::new(move |u, e| f(u, e).boxed_local());
-        self.on_update(wrapped);
-    }
-
-    /// Conditional handler: run only when `pred(&update)` is true
-    #[deprecated(since = "0.3.0", note = "Use on_update_ctx with filter module instead")]
-    #[allow(deprecated)]
-    pub fn on_update_when<P, F, Fut>(&mut self, pred: P, f: F)
-    where
-        P: Fn(&Update) -> bool + 'static,
-        F: Fn(Update, Env) -> Fut + 'static,
-        Fut: Future<Output = AppResult<UpdateOutcome>> + 'static,
-    {
-        let f = Rc::new(f);
-        let wrapped: UpdateHandlerFn = Rc::new(move |u, e| {
-            let run = pred(&u);
-            let f = f.clone();
-            async move { if run { f(u, e).await } else { Ok(None) } }.boxed_local()
-        });
-        self.on_update(wrapped);
-    }
-
-    /// Convenience: route a specific Telegram command (e.g., "/version")
-    #[deprecated(since = "0.3.0", note = "Use on_command_ctx instead")]
-    #[allow(deprecated)]
-    pub fn on_command<F, Fut>(&mut self, command: &'static str, f: F)
-    where
-        F: Fn(Update, Env) -> Fut + 'static,
-        Fut: Future<Output = AppResult<UpdateOutcome>> + 'static,
-    {
-        let cmd = if command.starts_with('/') {
-            command.to_string()
-        } else {
-            format!("/{}", command)
-        };
-        self.on_update_when(
-            move |u: &Update| match &u.content {
-                UpdateContent::Message(m) => match &m.text {
-                    Some(text) => {
-                        let first = text.split_whitespace().next().unwrap_or("");
-                        first == cmd
-                    }
-                    None => false,
-                },
-                _ => false,
-            },
-            f,
-        );
     }
 
     /// Register a context-based handler with session support
@@ -171,7 +88,7 @@ impl App {
         T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone + 'static,
         S: session::SessionStorage + 'static,
         F: Fn(session::Context<T, S>) -> Fut + 'static,
-        Fut: Future<Output = AppResult<Flow>> + 'static,
+        Fut: Future<Output = BotResult<Flow>> + 'static,
     {
         let f = Rc::new(f);
         self.on_update_flow(Rc::new(move |update, env| {
@@ -184,7 +101,7 @@ impl App {
                     .await
                     .map_err(|e| worker::Error::RustError(e.to_string()))?;
                 let ctx = session::Context::new(update, env, sess);
-                let result = f(ctx.clone()).await;
+                let result = f(ctx.clone()).await.map_err(|e| e.into());
                 ctx.session
                     .save(Some(3600))
                     .await
@@ -201,7 +118,7 @@ impl App {
         T: Default + serde::Serialize + serde::de::DeserializeOwned + Clone + 'static,
         S: session::SessionStorage + 'static,
         F: Fn(session::Context<T, S>) -> Fut + 'static,
-        Fut: Future<Output = AppResult<Flow>> + 'static,
+        Fut: Future<Output = BotResult<Flow>> + 'static,
     {
         let cmd = if command.starts_with('/') {
             command.to_string()
@@ -233,7 +150,7 @@ impl App {
                     .await
                     .map_err(|e| worker::Error::RustError(e.to_string()))?;
                 let ctx = session::Context::new(update, env, sess);
-                let result = f(ctx.clone()).await;
+                let result = f(ctx.clone()).await.map_err(|e| e.into());
                 ctx.session
                     .save(Some(3600))
                     .await
@@ -307,7 +224,7 @@ pub trait Plugin {
 pub mod prelude {
     pub use crate::error::{BotError, BotResult};
     pub use crate::filter;
-    pub use crate::frankenstein::{Update, UpdateContent};
+    pub use crate::frankenstein::updates::{Update, UpdateContent};
     #[cfg(feature = "session")]
     pub use crate::session::DurableObjectStorage;
     pub use crate::session::{Context, KvStorage, Session, SessionStorage};
