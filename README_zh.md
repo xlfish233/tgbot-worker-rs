@@ -146,6 +146,23 @@ pub async fn fetch(req: Request, env: Env, ctx: worker::Context) -> Result<Respo
 | `bot.delete_message(chat_id, msg_id)` | 删除消息 |
 | `bot.send_photo(chat_id, photo)` | 发送图片 |
 
+### 管理员方法
+
+| 方法 | 描述 |
+|------|------|
+| `bot.ban_chat_member(chat_id, user_id, until_date, revoke)` | 封禁用户 |
+| `bot.unban_chat_member(chat_id, user_id, only_if_banned)` | 解封用户 |
+| `bot.kick_chat_member(chat_id, user_id)` | 踢出用户（封禁后立即解封） |
+| `bot.mute_chat_member(chat_id, user_id, until_date)` | 禁言用户 |
+| `bot.unmute_chat_member(chat_id, user_id)` | 解除禁言 |
+| `bot.restrict_chat_member(chat_id, user_id, perms, until)` | 限制权限 |
+| `bot.promote_chat_member(chat_id, user_id, rights)` | 提升为管理员 |
+| `bot.pin_message(chat_id, msg_id, silent)` | 置顶消息 |
+| `bot.unpin_message(chat_id, msg_id)` | 取消置顶 |
+| `bot.unpin_all_messages(chat_id)` | 取消所有置顶 |
+| `bot.set_chat_title(chat_id, title)` | 设置群标题 |
+| `bot.set_chat_description(chat_id, desc)` | 设置群描述 |
+
 ### Message 访问器
 
 | 方法 | 描述 |
@@ -278,21 +295,19 @@ let seconds = parse_duration("1d")?;   // 86400
 
 ## 重试工具
 
-处理速率限制和瞬时错误：
+检测可重试错误并提取重试时间：
 
 ```rust
-use tgbot_worker_rs::prelude::*;
+use tgbot_worker_rs::retry::{is_retryable, get_retry_after};
 
-let policy = RetryPolicy::new(3, 1000)  // 3 次重试，1 秒基础延迟
-    .with_max_delay(30000);              // 最大 30 秒
-
-let mut ctx = RetryContext::new(policy);
-while ctx.can_retry() {
-    match bot.send_message(chat_id, "你好").await {
-        Ok(_) => break,
-        Err(e) => {
-            ctx.record_failure(&e.to_string());
-            // 在 serverless 中：通过队列在 ctx.next_delay_seconds() 后调度重试
+match bot.send_message(chat_id, "你好").await {
+    Ok(_) => { /* 成功 */ }
+    Err(e) => {
+        let err = e.to_string();
+        if is_retryable(&err) {
+            // 获取 Telegram 建议的延迟时间（针对 429 错误）
+            let delay = get_retry_after(&err).unwrap_or(30);
+            // 按需处理重试
         }
     }
 }
