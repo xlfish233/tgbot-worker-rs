@@ -15,6 +15,7 @@ pub mod error;
 pub mod filter;
 pub mod handler;
 pub mod keyboard;
+pub mod menu;
 pub mod message;
 #[cfg(feature = "queue")]
 pub mod queue;
@@ -28,6 +29,7 @@ pub use frankenstein::types::ChatPermissions;
 pub use error::{BotError, BotResult};
 pub use filter::*;
 pub use keyboard::{InlineButton, InlineKeyboard, ReplyButton, ReplyKeyboard};
+pub use menu::{Menu, MenuItem};
 pub use message::{CallbackQuery, Message};
 pub use retry::{get_retry_after, is_retryable};
 
@@ -302,6 +304,9 @@ pub mod prelude {
 
     // Keyboard types
     pub use crate::keyboard::{InlineButton, InlineKeyboard, ReplyButton, ReplyKeyboard};
+
+    // Menu system
+    pub use crate::menu::{Menu, MenuItem};
 
     // Command parsing
     pub use crate::command::{CommandParser, ParseError as CommandParseError};

@@ -1,7 +1,8 @@
 //! Filter combinators for update handling.
 //!
-//! Filters can be used with `App::on_update_when` to conditionally handle updates.
+//! Filters can be used to conditionally handle updates.
 
+use frankenstein::types::ChatType;
 use frankenstein::updates::{Update, UpdateContent};
 
 /// Check if update is a message
@@ -106,7 +107,83 @@ where
     move |u| !f(u)
 }
 
+// =========================================================================
+// Chat type filters (Guards)
+// =========================================================================
+
+/// Check if update is from a private chat
+pub fn is_private(u: &Update) -> bool {
+    get_chat_type(u) == Some(ChatType::Private)
+}
+
+/// Check if update is from a group (group or supergroup)
+pub fn is_group(u: &Update) -> bool {
+    matches!(
+        get_chat_type(u),
+        Some(ChatType::Group) | Some(ChatType::Supergroup)
+    )
+}
+
+/// Check if update is from a supergroup specifically
+pub fn is_supergroup(u: &Update) -> bool {
+    get_chat_type(u) == Some(ChatType::Supergroup)
+}
+
+/// Check if update is from a channel
+pub fn is_channel(u: &Update) -> bool {
+    get_chat_type(u) == Some(ChatType::Channel)
+}
+
+/// Check if user is in a list of allowed user IDs (admin whitelist)
+///
+/// # Example
+/// ```ignore
+/// const ADMINS: &[u64] = &[123456789, 987654321];
+/// if is_user_in(ADMINS)(&update) {
+///     // User is an admin
+/// }
+/// ```
+pub fn is_user_in(user_ids: &'static [u64]) -> impl Fn(&Update) -> bool {
+    move |u| {
+        get_user_id(u)
+            .map(|id| user_ids.contains(&id))
+            .unwrap_or(false)
+    }
+}
+
+// =========================================================================
+// Time-based filters
+// =========================================================================
+
+/// Filter out updates older than specified seconds.
+///
+/// Useful for ignoring stale updates that accumulated while bot was offline.
+///
+/// # Example
+/// ```ignore
+/// // Only process updates from the last 60 seconds
+/// if is_recent(60)(&update) {
+///     // Process update
+/// }
+/// ```
+pub fn is_recent(max_age_seconds: u64) -> impl Fn(&Update) -> bool {
+    move |u| {
+        let msg_date = get_message_date(u);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // If we can't get the date, assume it's recent
+        msg_date
+            .map(|d| now.saturating_sub(d) <= max_age_seconds)
+            .unwrap_or(true)
+    }
+}
+
+// =========================================================================
 // Helper functions
+// =========================================================================
 
 fn get_text(u: &Update) -> Option<&str> {
     match &u.content {
@@ -135,6 +212,36 @@ fn get_user_id(u: &Update) -> Option<u64> {
         UpdateContent::EditedMessage(m) => m.from.as_ref().map(|u| u.id),
         UpdateContent::CallbackQuery(c) => Some(c.from.id),
         UpdateContent::InlineQuery(q) => Some(q.from.id),
+        _ => None,
+    }
+}
+
+fn get_chat_type(u: &Update) -> Option<ChatType> {
+    match &u.content {
+        UpdateContent::Message(m) => Some(m.chat.type_field),
+        UpdateContent::EditedMessage(m) => Some(m.chat.type_field),
+        UpdateContent::ChannelPost(m) => Some(m.chat.type_field),
+        UpdateContent::EditedChannelPost(m) => Some(m.chat.type_field),
+        UpdateContent::CallbackQuery(c) => c.message.as_ref().map(|m| match m {
+            frankenstein::types::MaybeInaccessibleMessage::Message(msg) => msg.chat.type_field,
+            frankenstein::types::MaybeInaccessibleMessage::InaccessibleMessage(msg) => {
+                msg.chat.type_field
+            }
+        }),
+        _ => None,
+    }
+}
+
+fn get_message_date(u: &Update) -> Option<u64> {
+    match &u.content {
+        UpdateContent::Message(m) => Some(m.date),
+        UpdateContent::EditedMessage(m) => Some(m.date),
+        UpdateContent::ChannelPost(m) => Some(m.date),
+        UpdateContent::EditedChannelPost(m) => Some(m.date),
+        UpdateContent::CallbackQuery(c) => c.message.as_ref().map(|m| match m {
+            frankenstein::types::MaybeInaccessibleMessage::Message(msg) => msg.date,
+            frankenstein::types::MaybeInaccessibleMessage::InaccessibleMessage(msg) => msg.date,
+        }),
         _ => None,
     }
 }

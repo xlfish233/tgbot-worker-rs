@@ -49,9 +49,9 @@
 | **高** | 速率限制 | 自动重试 + 指数退避 + flood wait 处理 | ✅ 已完成 |
 | **高** | dptree 处理器 | 受 teloxide dptree 启发的可组合处理器链 | ✅ 已完成 |
 | **高** | 对话/FSM | 支持状态持久化的多步对话流程 | ✅ 已完成 |
-| **中** | Guard 中间件 | `only_admin()`、`only_private()`、`only_group()` 权限守卫 | 🔲 待开发 |
-| **中** | 菜单系统 | 支持分页的交互式内联按钮菜单 | 🔲 待开发 |
-| **中** | 忽略旧更新 | 跳过超过 N 秒的过期更新 | 🔲 待开发 |
+| **中** | Guard 过滤器 | `is_private()`、`is_group()`、`is_user_in()` 聊天类型守卫 | ✅ 已完成 |
+| **中** | 菜单系统 | 支持分页的交互式内联按钮菜单 | ✅ 已完成 |
+| **中** | 忽略旧更新 | 通过 `is_recent()` 跳过超过 N 秒的过期更新 | ✅ 已完成 |
 | **低** | 国际化支持 | 多语言/本地化辅助工具 | 🔲 待开发 |
 | **低** | 指标/日志 | 结构化日志和更新处理指标 | 🔲 待开发 |
 | **低** | 机器人命令菜单 | 通过 `setMyCommands` 自动向 Telegram 注册命令 | 🔲 待开发 |
@@ -168,16 +168,27 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 ```rust
 use tgbot_worker_rs::filter::*;
 
-// 可用过滤器
+// 更新类型过滤器
 is_message(&update)           // 是消息
 is_callback_query(&update)    // 是回调查询
 has_text(&update)             // 有文本内容
 is_command(&update)           // 是命令（以 / 开头）
+
+// 文本过滤器
 text_contains("hello")        // 文本包含子串
 text_starts_with("hi")        // 文本以前缀开头
 callback_data_equals("btn1")  // 回调数据匹配
 from_chat(chat_id)            // 来自特定聊天
 from_user(user_id)            // 来自特定用户
+
+// 聊天类型守卫
+is_private(&update)           // 仅私聊
+is_group(&update)             // 群组或超级群组
+is_channel(&update)           // 仅频道
+is_user_in(&[123, 456])       // 用户白名单（管理员检查）
+
+// 时间过滤器
+is_recent(60)                 // 跳过超过 60 秒的更新
 
 // 组合器
 and(is_message, has_text)     // 两个条件都满足
@@ -210,6 +221,33 @@ let keyboard = ReplyKeyboard::new()
     .one_time();
 
 bot.send_reply_keyboard(chat_id, "选择：", keyboard).await?;
+```
+
+## 菜单系统
+
+构建分页内联菜单：
+
+```rust
+use tgbot_worker_rs::menu::Menu;
+
+// 创建分页菜单
+let menu = Menu::new("settings")
+    .item("个人资料", "profile")
+    .item("通知设置", "notifications")
+    .item("隐私设置", "privacy")
+    .item("语言设置", "language")
+    .item("帮助", "help")
+    .page_size(3);
+
+// 发送第一页
+let keyboard = menu.build_page(0);
+bot.send_inline_keyboard(chat_id, "设置：", keyboard).await?;
+
+// 处理分页回调
+if let Some(page) = Menu::parse_page(callback_data, "settings") {
+    let keyboard = menu.build_page(page);
+    bot.edit_with_keyboard(chat_id, msg_id, "设置：", keyboard.build()).await?;
+}
 ```
 
 ## 命令解析

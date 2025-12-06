@@ -49,9 +49,9 @@ Planned features and improvements (contributions welcome!):
 | **High** | Rate Limiting | Auto-retry with exponential backoff, flood wait handling | ✅ Done |
 | **High** | dptree Handler | Composable handler chains inspired by teloxide's dptree | ✅ Done |
 | **High** | Dialogue/FSM | Multi-step conversation flows with state persistence | ✅ Done |
-| **Medium** | Guard Middleware | `only_admin()`, `only_private()`, `only_group()` permission guards | 🔲 TODO |
-| **Medium** | Menu System | Interactive inline button menus with pagination | 🔲 TODO |
-| **Medium** | Ignore Old Updates | Skip stale updates older than N seconds | 🔲 TODO |
+| **Medium** | Guard Filters | `is_private()`, `is_group()`, `is_user_in()` chat type guards | ✅ Done |
+| **Medium** | Menu System | Interactive inline button menus with pagination | ✅ Done |
+| **Medium** | Ignore Old Updates | Skip stale updates older than N seconds via `is_recent()` | ✅ Done |
 | **Low** | I18n Support | Internationalization/localization helpers | 🔲 TODO |
 | **Low** | Metrics/Logging | Structured logging and update processing metrics | 🔲 TODO |
 | **Low** | Bot Commands Menu | Auto-register commands with Telegram via `setMyCommands` | 🔲 TODO |
@@ -163,21 +163,32 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 
 ## Filter Combinators
 
-Use filters with `on_update_when` or check conditions in handlers:
+Use filters to check conditions in handlers:
 
 ```rust
 use tgbot_worker_rs::filter::*;
 
-// Available filters
+// Update type filters
 is_message(&update)           // Is a message
 is_callback_query(&update)    // Is a callback query
 has_text(&update)             // Has text content
 is_command(&update)           // Is a command (starts with /)
+
+// Text filters
 text_contains("hello")        // Text contains substring
 text_starts_with("hi")        // Text starts with prefix
 callback_data_equals("btn1")  // Callback data matches
 from_chat(chat_id)            // From specific chat
 from_user(user_id)            // From specific user
+
+// Chat type guards
+is_private(&update)           // Private chat only
+is_group(&update)             // Group or supergroup
+is_channel(&update)           // Channel only
+is_user_in(&[123, 456])       // User whitelist (admin check)
+
+// Time filter
+is_recent(60)                 // Skip updates older than 60 seconds
 
 // Combinators
 and(is_message, has_text)     // Both conditions
@@ -210,6 +221,33 @@ let keyboard = ReplyKeyboard::new()
     .one_time();
 
 bot.send_reply_keyboard(chat_id, "Select:", keyboard).await?;
+```
+
+## Menu System
+
+Build paginated inline menus for navigation:
+
+```rust
+use tgbot_worker_rs::menu::Menu;
+
+// Create a paginated menu
+let menu = Menu::new("settings")
+    .item("Profile", "profile")
+    .item("Notifications", "notifications")
+    .item("Privacy", "privacy")
+    .item("Language", "language")
+    .item("Help", "help")
+    .page_size(3);
+
+// Send first page
+let keyboard = menu.build_page(0);
+bot.send_inline_keyboard(chat_id, "Settings:", keyboard).await?;
+
+// Handle pagination callback
+if let Some(page) = Menu::parse_page(callback_data, "settings") {
+    let keyboard = menu.build_page(page);
+    bot.edit_with_keyboard(chat_id, msg_id, "Settings:", keyboard.build()).await?;
+}
 ```
 
 ## Command Parsing
